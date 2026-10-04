@@ -1016,13 +1016,20 @@ jQuery(async () => {
     }, 1500);
 
     // 扩展到设置页（和酒馆助手同位置）
-    panel = renderPanel({
-        settings, onSave, ctx: ctx(), api,
-        onOpenTop: () => {
-            openTopPanel();
-            api.refreshTop();
-        },
-    });
+    try {
+        log('开始挂载设置页面板…');
+        panel = renderPanel({
+            settings, onSave, ctx: ctx(), api,
+            onOpenTop: () => {
+                openTopPanel();
+                api.refreshTop();
+            },
+        });
+        log('设置页面板挂载完成: %s',
+            panel ? Object.keys(panel).join(',') : '(返回空)');
+    } catch (e) {
+        warn('设置页面板挂载失败', e);
+    }
 
     if (event_types.CHAT_COMPLETION_SETTINGS_READY) {
         eventSource.on(event_types.CHAT_COMPLETION_SETTINGS_READY, onSettingsReady);

@@ -874,5 +874,31 @@ const both = msgWithSummary + '\n<details class="cmcc"><summary>本次记忆</su
 chk(parseMemoryCommands(both).entries.length === 1, '★ 两者都有时，cmcc 块优先被解析');
 console.log('');
 
+
+// ── 25. 回归：记忆正文含 {user} 时不能被当成 JSON ──
+// 起因（真实 bug）：parseBlock 曾用 body.replace(/^[^{[]*/, '')
+//   那是「剥掉第一个 { 之前的一切」，而记忆里常出现 ST 的宏 {user}，
+//   于是整段被剥到只剩 {user}…，JSON 解析失败后**整块记忆全丢**。
+console.log('【25】回归：含 {user} 的记忆块');
+const FU = '```';
+const withMacro = FU + 'cmcc\n'
+    + '和她一起在雪地里走了很久\n'
+    + '她把手套让给 {user}，自己揣着手说不冷\n'
+    + FU;
+const pm25 = parseMemoryCommands(withMacro);
+chk(pm25.blockCount === 1, '认出块');
+chk(pm25.entries.length === 2, '★★ 含 {user} 时仍解析出 2 条（曾经全丢）');
+chk(pm25.entries[1].text.includes('{user}'), '★ {user} 宏原样保留在记忆里');
+chk(pm25.errors.length === 0, '★ 没有 JSON 解析错误');
+
+// 纯文本行也不该被误当 JSON
+chk(parseBlock('普通中文记忆，没有大括号').entries.length === 1, '纯中文行 → 1 条');
+chk(parseBlock('含 {user} 的普通行').entries.length === 1, '★ 含宏的普通行 → 1 条');
+chk(parseBlock('{user} 开头的行').entries.length === 1, '★ 以 {user} 开头也不当 JSON');
+// 真 JSON 仍然要认
+chk(parseBlock('{"memory":[{"text":"x"}]}').entries.length === 1, '真 JSON 仍认');
+chk(parseBlock('  {"memory":[{"text":"y"}]}  ').entries.length === 1, '带空白的 JSON 仍认');
+console.log('');
+
 console.log(fail === 0 ? `✓ 全部通过 (${pass} 项)` : `❌ 失败 ${fail} 项 / 共 ${pass + fail} 项`);
 process.exit(fail ? 1 : 0);

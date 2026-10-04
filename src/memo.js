@@ -102,32 +102,74 @@ export function parseBlock(content) {
     if (!body) return { entries, errors };
 
     // ── 试 JSON ──
-    const jsonText = body.replace(/^[^{\[]*/, '').trim();
-    if (jsonText.startsWith('{') || jsonText.startsWith('[')) {
+    // ⚠ 这里曾经写成 body.replace(/^[^{\[]*/, '') ——
+    //   那是「剥掉第一个 { 之前的一切」，而记忆正文里常出现 ST 的宏 {user}，
+    //   于是整段文本被剥到只剩 {user}…，JSON 解析失败后**整块记忆全丢**。
+    //
+    //   现在分两步，且「解析成功」是硬门槛：
+    //     ① 第一非空行以 { 或 [ 开头 → 当 JSON 试；成功且有 memory 才用，
+    //        失败才报错（不再回落到行式，免得把 JSON 原文当一条记忆）。
+    //     ② 否则只做**试探性**解析：解析成功**且**含 memory/memories 数组
+    //        才当 JSON；否则安静地回落到行式（这样 "{user} 开头的行" 不会被误判）。
+    const firstLine = body.split('\n')[0].trim();
+    // 「像 JSON」= 以 { 或 [ 开头，**且**后面紧跟 " 或 } 或 ] 或空白+引号。
+    // 这样 {user} 开头的普通记忆不会被误判（{u 不是合法 JSON 开头）。
+    const looksJson = /^\{[\s]*"/.test(firstLine) || /^\[\s*[\s"{\[]/.test(firstLine)
+        || firstLine === '{}' || firstLine === '[]';
+
+    /** 从已解析对象里取记忆数组 */
+    const arrOf = (o) => (Array.isArray(o) ? o
+        : Array.isArray(o?.memory) ? o.memory
+            : Array.isArray(o?.memories) ? o.memories
+                : null);
+
+    if (looksJson) {
         let obj = null;
+        let bad = false;
         try {
-            obj = JSON.parse(jsonText);
+            obj = JSON.parse(body);
         } catch (e) {
-            errors.push('JSON 解析失败：' + e.message);
-            // 看起来是 JSON 但坏了 —— 不再回落到行式，
-            // 否则会把整段 JSON 原文当成一条记忆存进去
+            bad = true;
+        }
+        if (!bad) {
+            // 解析成功 → 确实是 JSON
+            const arr = arrOf(obj);
+            if (!arr) {
+                // 是 JSON 但没有 memory —— 干净返回空，
+                // 绝不能把 JSON 原文当成一条记忆存进去（曾经的 bug）
+                errors.push('JSON 里没有 memory 数组');
+                return { entries, errors };
+            }
+            for (const it of arr.slice(0, MAX_ENTRIES_PER_BLOCK)) {
+                const e = normalizeEntry(typeof it === 'string' ? { text: it } : it);
+                if (e) entries.push(e);
+            }
             return { entries, errors };
         }
-        const arr = Array.isArray(obj) ? obj
-            : Array.isArray(obj?.memory) ? obj.memory
-                : Array.isArray(obj?.memories) ? obj.memories
-                    : null;
-        if (!arr) {
-            // 同样是「像 JSON 但没有 memory」→ 干净返回空
-            errors.push('JSON 里没有 memory 数组');
+        // 解析失败。多行 → 认定是坏 JSON，拒绝（避免把 JSON 原文当记忆）；
+        // 单行 → 很可能只是「以 { 开头的普通记忆」（比如 {user} 开头的行），
+        //          安静回落到行式。
+        if (body.includes('\n')) {
+            errors.push('JSON 解析失败：内容像 JSON 但格式坏了');
             return { entries, errors };
         }
-        for (const it of arr.slice(0, MAX_ENTRIES_PER_BLOCK)) {
-            const e = normalizeEntry(typeof it === 'string' ? { text: it } : it);
-            if (e) entries.push(e);
-        }
-        return { entries, errors };
     }
+
+    // 试探：整段能不能 JSON.parse 且含 memory 数组
+    try {
+        const m = body.match(/(\{[\s\S]*\}|\[[\s\S]*\])\s*$/);
+        if (m) {
+            const probe = JSON.parse(m[1]);
+            const arr = arrOf(probe);
+            if (arr) {
+                for (const it of arr.slice(0, MAX_ENTRIES_PER_BLOCK)) {
+                    const e = normalizeEntry(typeof it === 'string' ? { text: it } : it);
+                    if (e) entries.push(e);
+                }
+                return { entries, errors };
+            }
+        }
+    } catch (e) { /* 不是 JSON，正常回落 */ }
 
     // ── 行式 ──
     for (const rawLine of body.split('\n')) {
