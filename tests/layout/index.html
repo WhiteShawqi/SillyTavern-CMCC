@@ -199,6 +199,19 @@ function measure() {
         okDisplay: cs.display === 'block',
         okPosition: cs.position === 'absolute',
         openState: isTopPanelOpen(),
+        // ★ 按钮是否横排：同一排按钮的 top 应该接近
+        btnTops: [...document.querySelectorAll('#cmcc-top-panel_body .cmcc-btns button')]
+            .map(b => Math.round(b.getBoundingClientRect().top)),
+        btnWidths: [...document.querySelectorAll('#cmcc-top-panel_body .cmcc-btns button')]
+            .map(b => Math.round(b.getBoundingClientRect().width)),
+        btnCount: document.querySelectorAll('#cmcc-top-panel_body .cmcc-btns button').length,
+        btnRowOk: (() => {
+            const bs = [...document.querySelectorAll('#cmcc-top-panel_body .cmcc-btns button')];
+            if (!bs.length) return 'NO_BUTTONS';
+            const tops = bs.map(b => Math.round(b.getBoundingClientRect().top));
+            // 同排 → top 差值 <= 4px
+            return (Math.max(...tops) - Math.min(...tops)) <= 4;
+        })(),
         // ★ 错误注入：让 snapshot 抛错，验证渲染失败是否可见
         errTest: (() => {
             const badApi = Object.assign({}, fakeApi, { snapshot: () => { throw new Error('注入的测试错误'); } });

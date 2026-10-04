@@ -76,9 +76,25 @@ export function renderPanel(o) {
         '换人之后，她的人设会同步进记忆世界书。原来的记忆保留（按世界分着存）。'));
 
     const quick = el('div', 'cmcc-btns');
-    const bOpen = el('button', 'menu_button', '打开顶部面板（改人设 / 记忆）');
+    const bOpen = el('button', 'menu_button cmcc-wide-btn', '打开顶部面板（改人设 / 记忆）');
     bOpen.onclick = () => onOpenTop();
     quick.appendChild(bOpen);
+    const bSum = el('button', 'menu_button', '立即整理记忆');
+    bSum.onclick = () => api.summarize(true);
+    quick.appendChild(bSum);
+    const bNew = el('button', 'menu_button', '手动加一条记忆');
+    bNew.title = '给当前世界/存档加一条记忆（不改人设）';
+    bNew.onclick = async () => {
+        let pos;
+        try { pos = api.currentPos(); } catch (e) { pos = null; }
+        if (!pos) { ctx.toastr?.warning?.('读不到当前位置'); return; }
+        const v = await ctx.callGenericPopup('要记住什么？', ctx.POPUP_TYPE.INPUT, '');
+        if (!v) return;
+        await api.addMemory(pos.wKey, pos.sKey, v);
+        ctx.toastr?.success?.('已加入「' + (pos.wLabel || '当前世界') + '」');
+        refresh();
+    };
+    quick.appendChild(bNew);
     sec1.appendChild(quick);
     root.appendChild(sec1);
 

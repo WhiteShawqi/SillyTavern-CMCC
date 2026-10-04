@@ -21,6 +21,34 @@ const LOG_TAG = '[CMCC]';
 let RENDER_HOOK = null;
 export function setRenderHook(fn) { RENDER_HOOK = fn; }
 
+/**
+ * 判断记忆世界书是否已挂载（全局选中 或 当前角色的附加世界书）
+ * ST 只读「外部世界书文件」，卡内嵌的不生效 —— 所以要提醒用户挂载。
+ */
+export function isWorldBookActive(ctx, bookName) {
+    if (!bookName) return true;
+    try {
+        const s = ctx.powerUserSettings || {};
+        const wi = s.world_info_settings || {};
+        const globals = wi.world_info?.globalSelect || s.world_info?.globalSelect || [];
+        if (Array.isArray(globals) && globals.includes(bookName)) return true;
+    } catch (e) { /* ignore */ }
+    try {
+        // 角色的附加世界书挂在 world_info_character_books[fileName] = [names]
+        const s = ctx.powerUserSettings || {};
+        const map = s.world_info_character_books || {};
+        const ch = (ctx.characters || [])[ctx.characterId];
+        const file = ch?.avatar;
+        if (file && Array.isArray(map[file]) && map[file].includes(bookName)) return true;
+    } catch (e) { /* ignore */ }
+    try {
+        // 当前聊天的主世界书
+        const meta = ctx.chatMetadata || {};
+        if (meta.world_info === bookName) return true;
+    } catch (e) { /* ignore */ }
+    return false;
+}
+
 function el(tag, cls, html) {
     const e = document.createElement(tag);
     if (cls) e.className = cls;
@@ -119,9 +147,14 @@ export function mountTopDrawer() {
     document.addEventListener('mousedown', (ev) => {
         if (!isTopPanelOpen()) return;
         const t = ev.target;
-        if (drawer.contains(t)) return;
-        // 点其他顶部图标时不抢（让 ST 自己处理）
-        if (t?.closest?.('#top-settings-holder')) closeDrawer();
+        if (drawer.contains(t)) return;          // 点自己面板：不关
+        if (t?.closest?.('#' + DRAWER_ID)) return;
+        closeDrawer();                            // 点任何其它地方都收起
+    });
+    // Esc 也能收起
+    document.addEventListener('keydown', (ev) => {
+        if (!isTopPanelOpen()) return;
+        if (ev.key === 'Escape') closeDrawer();
     });
 }
 
@@ -253,30 +286,52 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
         const tip = el('div', 'cmcc-top-section cmcc-empty-state');
         tip.innerHTML = [
             '<div style="font-weight:bold;margin-bottom:6px;">还没有选择陪伴角色</div>',
-            '<div style="opacity:.8;line-height:1.6;">',
+            '<div style="opacity:.85;line-height:1.7;">',
             '① 点上面的「切换 →」跳到扩展设置<br>',
             '② 在「陪伴角色卡」里选一张卡<br>',
             '③ 勾上「启用」<br>',
-            '④ 回到这里，人设与记忆就会显示出来',
+            '④ 把 <code>CMCC-记忆库</code> 设为世界书（勾起「全局」）<br>',
+            '⑤ 回到这里，人设与记忆就会显示出来',
             '</div>',
         ].join('');
         body.appendChild(tip);
 
         const tools0 = el('div', 'cmcc-btns');
-        const bGo = el('button', 'menu_button', '去选陪伴角色');
+        const bGo = el('button', 'menu_button cmcc-wide-btn', '去选陪伴角色');
         bGo.onclick = () => { closeDrawer(); onGotoSettings(); };
         tools0.appendChild(bGo);
         const bDiag = el('button', 'menu_button cmcc-mini', '诊断信息');
         bDiag.title = '复制当前状态，便于排查问题';
         bDiag.onclick = async () => {
             const txt = JSON.stringify(collectDiagnostics(ctx, api), null, 2);
-            console.log('[CMCC] 诊断', txt);
+            console.log(LOG_TAG, '诊断', txt);
             try { await navigator.clipboard.writeText(txt); ctx.toastr?.success?.('诊断信息已复制'); }
             catch (e) { ctx.toastr?.info?.('诊断信息已打印到控制台（F12）'); }
         };
         tools0.appendChild(bDiag);
         body.appendChild(tools0);
         return;
+    }
+
+    // 已选角色：若记忆世界书没被挂载，提醒一次（否则 AI 读不到记忆）
+    if (snap.stats.totalEntries > 0 && !isWorldBookActive(ctx, snap.bookName)) {
+        const warnBox = el('div', 'cmcc-top-section cmcc-warn');
+        warnBox.innerHTML = '<b>⚠ 记忆世界书未挂载</b><br>'
+            + '<span style="opacity:.85">记忆存在 <code>' + snap.bookName + '</code> 里，'
+            + '需要把它勾成<b>全局世界书</b>（或挂到当前聊天），AI 才读得到。</span>';
+        const bFix = el('button', 'menu_button cmcc-mini', '去挂载');
+        bFix.onclick = () => {
+            try {
+                // 打开 ST 的世界书面板，让用户勾选
+                const icon = document.querySelector('#WI-SP-button .drawer-toggle');
+                if (icon && !document.getElementById('WorldInfo')?.classList.contains('openDrawer')) {
+                    icon.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                }
+                ctx.toastr?.info?.('在列表里找到「' + snap.bookName + '」，勾上左侧的全局标记');
+            } catch (e) { ctx.toastr?.info?.('请手动打开世界书面板勾选'); }
+        };
+        warnBox.appendChild(bFix);
+        body.appendChild(warnBox);
     }
 
     // ── 人设（可直接改，改的是卡本身）──
