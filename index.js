@@ -21,6 +21,7 @@ import {
     deleteMemories, clearByScope, purgeEmpty,
     worldStats, bookStats,
     migrateFromLocalStorage, clearLegacyKeys,
+    activePersonaOf, nextPersonaId,
 } from './src/state.js';
 
 import {
@@ -37,6 +38,8 @@ import { parseMemoryCommands, commandSpec, stripBlocks } from './src/memo.js';
 // 摘要记录整节剧情（含她不在场的部分），而她只该记「和你共同经历的事」。
 import { renderPanel } from './src/ui.js';
 import { mountTopDrawer, renderTopPanel, openTopPanel, setRenderHook } from './src/topbar.js';
+
+const MANIFEST_VERSION = '1.0.0';
 
 const LOG = `[${APP_ABBR}]`;
 const log = (...a) => console.log(LOG, ...a);
@@ -117,7 +120,8 @@ function findCompanion(avatar) {
  */
 function resolveCompanion() {
     if (settings.personaMode === 'builtin') {
-        const b = settings.builtin || {};
+        // 取当前激活的那个内置人设（用户要求支持多个预设）
+        const b = activePersonaOf(settings);
         if (!b.name && !b.description) return null;
         return {
             name: b.name || '同伴',
@@ -745,13 +749,207 @@ const api = {
             await syncIdentityEntry(book, comp);
         }
     },
-    /** 改内置人设（部分字段） */
+    /** 改内置人设（部分字段）—— 写当前激活的那一项 */
     async setBuiltin(patch) {
         settings.personaMode = 'builtin';
-        settings.builtin = Object.assign({}, settings.builtin || {}, patch || {});
+        const cur = activePersonaOf(settings);
+        const target = (settings.builtins || []).find((x) => x.id === cur.id)
+            || (settings.builtins || [])[0];
+        if (target) Object.assign(target, patch || {});
+        // 保持旧字段同步（老代码 / 快照还读它）
+        settings.builtin = Object.assign({}, activePersonaOf(settings));
         onSave();
         const book = await loadFromBook();
         await syncIdentityEntry(book, resolveCompanion());
+    },
+
+    // ── 多内置人设（预设）管理 ──
+
+    /** 列出所有人设（含激活标记） */
+    listPersonas() {
+        return (settings.builtins || []).map((x) => ({
+            id: x.id, name: x.name,
+            active: x.id === activePersonaOf(settings).id,
+            descLen: (x.description || '').length,
+        }));
+    },
+
+    /** 切换激活的人设 */
+    async setActivePersona(id) {
+        const hit = (settings.builtins || []).find((x) => x.id === id);
+        if (!hit) { ctx().toastr?.warning?.('找不到这个人设'); return false; }
+        settings.activeBuiltinId = id;
+        settings.personaMode = 'builtin';
+        settings.builtin = Object.assign({}, activePersonaOf(settings));
+        onSave();
+        const book = await loadFromBook();
+        await syncIdentityEntry(book, resolveCompanion());
+        ctx().toastr?.success?.(`已切换到「${hit.name}」`);
+        return true;
+    },
+
+    /** 新建一个人设（空壳或复制当前） */
+    async addPersona(name, copyCurrent = false) {
+        if (!settings.builtins) settings.builtins = [];
+        const base = copyCurrent ? activePersonaOf(settings) : null;
+        const item = {
+            id: nextPersonaId(),
+            name: String(name || (base ? base.name + ' 副本' : '新角色')),
+            description: base?.description || '',
+            personality: base?.personality || '',
+            scenario: base?.scenario || '',
+        };
+        settings.builtins.push(item);
+        settings.activeBuiltinId = item.id;
+        settings.personaMode = 'builtin';
+        settings.builtin = Object.assign({}, item);
+        onSave();
+        const book = await loadFromBook();
+        await syncIdentityEntry(book, resolveCompanion());
+        return item.id;
+    },
+
+    /** 删除一个人设（至少留一个） */
+    async deletePersona(id) {
+        const list = settings.builtins || [];
+        if (list.length <= 1) {
+            ctx().toastr?.warning?.('至少要保留一个人设');
+            return false;
+        }
+        const idx = list.findIndex((x) => x.id === id);
+        if (idx < 0) return false;
+        list.splice(idx, 1);
+        if (settings.activeBuiltinId === id) {
+            settings.activeBuiltinId = list[0].id;
+        }
+        settings.builtin = Object.assign({}, activePersonaOf(settings));
+        onSave();
+        const book = await loadFromBook();
+        await syncIdentityEntry(book, resolveCompanion());
+        return true;
+    },
+
+    /** 重命名一个人设 */
+    async renamePersona(id, name) {
+        const hit = (settings.builtins || []).find((x) => x.id === id);
+        if (!hit) return false;
+        hit.name = String(name || hit.name);
+        if (settings.activeBuiltinId === id) {
+            settings.builtin = Object.assign({}, activePersonaOf(settings));
+        }
+        onSave();
+        return true;
+    },
+
+    // ── 导出 / 导入 ──
+
+    /**
+     * 导出：人设 + 记忆 一起带走
+     * @param {string} [personaId] 不给则导当前激活的
+     * @returns {object} 可直接 JSON.stringify 的对象
+     */
+    async exportAll(personaId) {
+        await loadFromBook();
+        const p = personaId
+            ? (settings.builtins || []).find((x) => x.id === personaId)
+            : activePersonaOf(settings);
+        return {
+            _cmcc: true,
+            _version: 1,
+            exportedAt: new Date().toISOString(),
+            manifestVersion: MANIFEST_VERSION,
+            persona: p ? {
+                name: p.name, description: p.description,
+                personality: p.personality, scenario: p.scenario,
+            } : null,
+            // 全部世界 + 存档 + 记忆（含共同）
+            worlds: JSON.parse(JSON.stringify(CACHE.worlds || {})),
+        };
+    },
+
+    /**
+     * 导入：把人设和记忆并进来（不覆盖已有的，冲突时保留两者）
+     * @param {object} obj  exportAll 产出的对象
+     * @param {boolean} [asNewPersona] true = 人设作为新预设加入
+     * @returns {{persona:string, worlds:number, saves:number, entries:number}}
+     */
+    async importAll(obj, asNewPersona = false) {
+        if (!obj || !obj._cmcc) {
+            throw new Error('不是 CMCC 导出的文件');
+        }
+        await loadFromBook();
+        let stats = { persona: '', worlds: 0, saves: 0, entries: 0 };
+
+        // ① 人设
+        if (obj.persona && obj.persona.name) {
+            if (asNewPersona) {
+                const item = {
+                    id: nextPersonaId(),
+                    name: obj.persona.name,
+                    description: obj.persona.description || '',
+                    personality: obj.persona.personality || '',
+                    scenario: obj.persona.scenario || '',
+                };
+                settings.builtins = settings.builtins || [];
+                settings.builtins.push(item);
+                settings.activeBuiltinId = item.id;
+                stats.persona = item.name;
+            } else {
+                // 覆盖当前激活项
+                const cur = activePersonaOf(settings);
+                const target = (settings.builtins || []).find((x) => x.id === cur.id);
+                if (target) {
+                    Object.assign(target, {
+                        name: obj.persona.name,
+                        description: obj.persona.description || '',
+                        personality: obj.persona.personality || '',
+                        scenario: obj.persona.scenario || '',
+                    });
+                    stats.persona = target.name;
+                }
+            }
+            settings.personaMode = 'builtin';
+            settings.builtin = Object.assign({}, activePersonaOf(settings));
+        }
+
+        // ② 记忆：并进来。同名存档 → 把不重复的记忆追加进去
+        const incoming = obj.worlds || {};
+        for (const [wKey, w] of Object.entries(incoming)) {
+            if (!w || typeof w !== 'object') continue;
+            if (!CACHE.worlds[wKey]) {
+                CACHE.worlds[wKey] = { label: w.label || wKey, lastSeen: Date.now(), saves: {} };
+                stats.worlds++;
+            }
+            const dst = CACHE.worlds[wKey];
+            if (w.label) dst.label = w.label;
+            dst.saves = dst.saves || {};
+            for (const [sKey, sv] of Object.entries(w.saves || {})) {
+                if (!sv) continue;
+                if (!dst.saves[sKey]) {
+                    dst.saves[sKey] = {
+                        label: sv.label || sKey,
+                        firstSeen: sv.firstSeen || Date.now(),
+                        lastSeen: sv.lastSeen || Date.now(),
+                        entries: [],
+                    };
+                    stats.saves++;
+                }
+                const have = new Set((dst.saves[sKey].entries || []).map((e) => e.text));
+                for (const e of (sv.entries || [])) {
+                    if (!e || typeof e.text !== 'string' || !e.text) continue;
+                    if (have.has(e.text)) continue;      // 去重
+                    have.add(e.text);
+                    dst.saves[sKey].entries.push({ ts: e.ts || Date.now(), text: e.text, kind: e.kind || 'memo' });
+                    stats.entries++;
+                }
+            }
+        }
+
+        onSave();
+        await saveToBook();
+        panel?.refresh();
+        api.refreshTop();
+        return stats;
     },
     /** 切模式 */
     async setPersonaMode(mode) {

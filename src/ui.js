@@ -164,6 +164,142 @@ export function renderPanel(o) {
     const builtinBox = el('div', 'cmcc-builtin');
 
     if (isBuiltin) {
+        // ── 内置人设：多个预设（用户要求：原来只有一个，没法同时存多个）──
+        const list = (typeof api.listPersonas === 'function' ? api.listPersonas() : []) || [];
+        const activeId = (settings.activeBuiltinId) || (list[0] && list[0].id) || '';
+
+        const pbar = el('div', 'cmcc-pbar');
+
+        const psel = document.createElement('select');
+        psel.className = 'text_pole cmcc-select';
+        if (!list.length) {
+            const o = document.createElement('option');
+            o.value = ''; o.textContent = '（还没有人设）';
+            psel.appendChild(o);
+        }
+        for (const it of list) {
+            const o = document.createElement('option');
+            o.value = it.id;
+            o.textContent = it.name + (it.descLen ? '' : '（空）');
+            if (it.id === activeId) o.selected = true;
+            psel.appendChild(o);
+        }
+        psel.onchange = async () => {
+            await api.setActivePersona(psel.value);
+            refresh();
+        };
+        pbar.appendChild(psel);
+
+        // 新建 / 复制
+        const bAdd = el('button', 'menu_button cmcc-mini', '新建');
+        bAdd.title = '新建一个空人设';
+        bAdd.onclick = async () => {
+            const name = await ctx.callGenericPopup('新人设的名字：', ctx.POPUP_TYPE.INPUT, '新角色');
+            if (name == null || name === '') return;
+            await api.addPersona(name, false);
+            refresh();
+        };
+        pbar.appendChild(bAdd);
+
+        const bCopy = el('button', 'menu_button cmcc-mini', '复制');
+        bCopy.title = '复制当前人设（含全部内容）';
+        bCopy.onclick = async () => {
+            const name = await ctx.callGenericPopup('副本的名字：', ctx.POPUP_TYPE.INPUT,
+                ((settings.builtin || {}).name || '同伴') + ' 副本');
+            if (name == null || name === '') return;
+            await api.addPersona(name, true);
+            refresh();
+        };
+        pbar.appendChild(bCopy);
+
+        const bDel = el('button', 'menu_button cmcc-mini cmcc-danger', '删除');
+        bDel.title = '删除当前人设（至少保留一个）';
+        bDel.disabled = list.length <= 1;
+        bDel.onclick = async () => {
+            const cur = list.find((x) => x.id === activeId);
+            const ok = await ctx.callGenericPopup(
+                `删除人设「${cur ? cur.name : ''}」？\n（记忆不会跟着删，仍在这个世界里）`,
+                ctx.POPUP_TYPE.CONFIRM);
+            if (!ok) return;
+            await api.deletePersona(activeId);
+            refresh();
+        };
+        pbar.appendChild(bDel);
+
+        const bRen = el('button', 'menu_button cmcc-mini', '改名');
+        bRen.title = '只改这个预设的名字（上面的"名字"字段是角色名）';
+        bRen.onclick = async () => {
+            const cur = list.find((x) => x.id === activeId);
+            const name = await ctx.callGenericPopup('预设名字：', ctx.POPUP_TYPE.INPUT,
+                cur ? cur.name : '');
+            if (name == null || name === '') return;
+            await api.renamePersona(activeId, name);
+            refresh();
+        };
+        pbar.appendChild(bRen);
+
+        builtinBox.appendChild(pbar);
+        builtinBox.appendChild(el('div', 'cmcc-hint',
+            `共 <b>${list.length}</b> 个人设预设，切换预设会同时换掉她的名字/描述/性格/关系。`));
+
+        // ── 导出 / 导入（人设 + 记忆一起带走）──
+        const ebar = el('div', 'cmcc-pbar');
+        const bExp = el('button', 'menu_button cmcc-mini', '导出人设+记忆');
+        bExp.title = '把人设和这个世界书里的全部记忆导出成一个 JSON 文件';
+        bExp.onclick = async () => {
+            try {
+                const data = await api.exportAll(activeId);
+                const json = JSON.stringify(data, null, 2);
+                const blob = new Blob([json], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                const nm = ((data.persona && data.persona.name) || 'CMCC').replace(/[\\/:*?"<>|]/g, '_');
+                a.href = url;
+                a.download = `CMCC-${nm}-${new Date().toISOString().slice(0, 10)}.json`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 3000);
+                const nEnt = Object.values(data.worlds || {}).reduce(
+                    (n, w) => n + Object.values(w.saves || {}).reduce((m, s) => m + (s.entries || []).length, 0), 0);
+                ctx.toastr?.success?.(`已导出：人设 + ${nEnt} 条记忆`);
+            } catch (e) {
+                ctx.toastr?.error?.('导出失败：' + e.message);
+            }
+        };
+        ebar.appendChild(bExp);
+
+        const bImp = el('button', 'menu_button cmcc-mini', '导入');
+        bImp.title = '导入之前导出的 JSON（记忆按内容去重合并，不会覆盖）';
+        bImp.onclick = () => {
+            const fi = document.createElement('input');
+            fi.type = 'file';
+            fi.accept = '.json,application/json';
+            fi.onchange = async () => {
+                const f = fi.files && fi.files[0];
+                if (!f) return;
+                try {
+                    const txt = await f.text();
+                    const obj = JSON.parse(txt);
+                    const asNew = await ctx.callGenericPopup(
+                        '人设怎么处理？\n确定 = 作为**新预设**加入\n取消 = 覆盖当前预设',
+                        ctx.POPUP_TYPE.CONFIRM);
+                    const r = await api.importAll(obj, !!asNew);
+                    ctx.toastr?.success?.(
+                        `导入完成：人设「${r.persona || '（无）'}」，`
+                        + `新增 ${r.worlds} 个世界 / ${r.saves} 个存档 / ${r.entries} 条记忆`);
+                    refresh();
+                } catch (e) {
+                    ctx.toastr?.error?.('导入失败：' + e.message);
+                }
+            };
+            fi.click();
+        };
+        ebar.appendChild(bImp);
+        builtinBox.appendChild(ebar);
+        builtinBox.appendChild(el('div', 'cmcc-hint',
+            '导出的是一个 JSON 文件，里面包含<b>人设</b>和<b>全部记忆</b>，换电脑时导入即可继续。'));
+
         // ── 内置人设编辑（完全独立，不碰原生角色卡）──
         const b = settings.builtin || {};
         const fields = [
@@ -323,7 +459,7 @@ export function renderPanel(o) {
     };
     row2.appendChild(mkNum('自动整理(条)', 'summarizeEvery', 0, 200, '每收到这么多消息整理一次；0=关闭自动'));
     row2.appendChild(mkNum('冷却(秒)', 'summarizeCooldown', 10, 3600));
-    row2.appendChild(mkNum('引导预算', 'tokenBudget', 200, 4000));
+    row2.appendChild(mkNum('引导预算', 'tokenBudget', 600, 12000));
     row2.appendChild(mkNum('最近记忆(条)', 'recentMemoryLimit', 0, 50,
         '注入多少条「最近」的记忆（建议 5~10）'));
     row2.appendChild(mkNum('相似旧事(条)', 'relevantMemoryLimit', 0, 20,

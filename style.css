@@ -977,3 +977,61 @@ details.cmcc[open] > *:not(summary):last-child {
     border: none;
     padding: 0;
 }
+
+/* ══ 三级级联勾选：半选状态 ══
+   勾了世界但只勾了它下面部分存档/记忆时，用半选表示
+   （浏览器原生半选是灰方块，容易看成禁用，所以自己画一道横线）。 */
+.cmcc-check:indeterminate {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 13px;
+    height: 13px;
+    border: 1px solid rgba(122 162 247 / 0.85);
+    border-radius: 3px;
+    background: rgba(122 162 247 / 0.22);
+    position: relative;
+    cursor: pointer;
+    vertical-align: middle;
+    margin: 0 4px 0 0;
+}
+
+.cmcc-check:indeterminate::after {
+    content: '';
+    position: absolute;
+    left: 2px;
+    right: 2px;
+    top: 50%;
+    height: 2px;
+    margin-top: -1px;
+    background: #b9cdff;
+    border-radius: 1px;
+}
+
+/* 世界 / 存档的勾选框给点强调，和 L3 的记忆框区分开 */
+.cmcc-world-check,
+.cmcc-save-check {
+    flex: 0 0 auto;
+}
+
+/* ══ 人设预设栏 / 导出导入栏 ══ */
+.cmcc-pbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin: 6px 0;
+}
+
+.cmcc-pbar .cmcc-select {
+    flex: 1 1 140px;
+    min-width: 120px;
+}
+
+.cmcc-pbar .cmcc-mini {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+.cmcc-pbar .cmcc-danger {
+    border-color: rgba(220 100 100 / 0.55);
+}

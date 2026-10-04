@@ -61,14 +61,93 @@ const SELECTED_WORLDS = new Set();
 const SELECTED_SAVES = new Set();
 
 /** 组合一条记忆的唯一键 */
-function entryKey(wKey, sKey, idx) {
+/**
+ * 仅供测试：暴露三个勾选集合与「进入/退出多选」开关。
+ * 生产代码不要用。
+ * @internal
+ */
+export const __selTestHook = {
+    SELECTED, SELECTED_SAVES, SELECTED_WORLDS,
+    clear() { SELECTED.clear(); SELECTED_SAVES.clear(); SELECTED_WORLDS.clear(); },
+    setMode(v) { SELECT_MODE = !!v; },
+};
+
+export function entryKey(wKey, sKey, idx) {
     return wKey + '\u0000' + sKey + '\u0000' + idx;
 }
 
 /** 拆回 [wKey, sKey, idx] */
-function parseEntryKey(k) {
+export function parseEntryKey(k) {
     const [w, s, i] = k.split('\u0000');
     return [w, s, parseInt(i, 10)];
+}
+
+/** 存档的勾选键（三级里 L2 用） */
+export function saveKeyId(wKey, sKey) {
+    return 's:' + wKey + '|' + sKey;
+}
+
+// ─────────────────────────────────────────────
+// 三级级联勾选
+//
+// 用户反馈的问题：勾了「世界」（L1）却没有把下面的存档和记忆一起勾上，
+// 勾了「存档」（L2）也没有带上 L3 —— 显示上"已选 1 个世界"但条目都没勾，
+// 看起来像"非正常全选"。
+//
+// 规则：
+//   · 勾 L1 → 它下面所有 L2、L3 全部勾上
+//   · 勾 L2 → 它下面所有 L3 全部勾上
+//   · 取消同理，逐层清掉
+//   · L2 复选框：自己的整档选了 → 勾上；部分 L3 选了 → 半选
+//   · L1 复选框：整个世界的档全选 → 勾上；部分 → 半选
+// ─────────────────────────────────────────────
+
+/** 把某个存档下所有记忆加进 / 移出 SELECTED */
+export function setSaveEntries(wKey, sKey, on, mem) {
+    const w = mem?.worlds?.[wKey];
+    const n = w?.saves?.[sKey]?.entries?.length || 0;
+    for (let i = 0; i < n; i++) {
+        const k = entryKey(wKey, sKey, i);
+        if (on) SELECTED.add(k); else SELECTED.delete(k);
+    }
+}
+
+/** 把某个世界下所有存档、记忆加进 / 移出 */
+export function setWorldAll(wKey, on, mem) {
+    const w = mem?.worlds?.[wKey];
+    if (!w?.saves) return;
+    for (const sKey of Object.keys(w.saves)) {
+        const id = saveKeyId(wKey, sKey);
+        if (on) SELECTED_SAVES.add(id); else SELECTED_SAVES.delete(id);
+        setSaveEntries(wKey, sKey, on, mem);
+    }
+}
+
+/** 某个存档的勾选状态：'all' | 'some' | 'none' */
+export function saveSelState(wKey, sKey, mem) {
+    const n = mem?.worlds?.[wKey]?.saves?.[sKey]?.entries?.length || 0;
+    if (!n) return SELECTED_SAVES.has(saveKeyId(wKey, sKey)) ? 'all' : 'none';
+    let hit = 0;
+    for (let i = 0; i < n; i++) if (SELECTED.has(entryKey(wKey, sKey, i))) hit++;
+    if (hit === 0) return SELECTED_SAVES.has(saveKeyId(wKey, sKey)) ? 'all' : 'none';
+    return hit === n ? 'all' : 'some';
+}
+
+/** 某个世界的勾选状态：'all' | 'some' | 'none' */
+export function worldSelState(wKey, mem) {
+    const w = mem?.worlds?.[wKey];
+    if (!w?.saves) return 'none';
+    const keys = Object.keys(w.saves);
+    if (!keys.length) return SELECTED_WORLDS.has(wKey) ? 'all' : 'none';
+    let all = 0, some = 0;
+    for (const sKey of keys) {
+        const st = saveSelState(wKey, sKey, mem);
+        if (st === 'all') all++;
+        else if (st === 'some') some++;
+    }
+    if (all === keys.length) return 'all';
+    if (all || some) return 'some';
+    return 'none';
 }
 
 /**
@@ -284,10 +363,9 @@ export function openTopPanel() {
     if (icon) { icon.classList.remove('closedIcon'); icon.classList.add('openIcon'); }
 }
 
-/** 关闭时清掉可能残留的 popper 状态 */
-document.addEventListener('click', (e) => {
-    // 点面板外部不自动关（跟 ST 其他抽屉一致，需要手动关）
-}, true);
+// （这里原本挂了一个 click 监听器，但回调体是空的 —— 什么也没做。
+//   已删除：既没用，又让本模块在模块顶层依赖 document，
+//   导致纯逻辑测试无法在 Node 里导入它。）
 
 // ─────────────────────────────────────────────
 // 渲染面板内容
@@ -616,6 +694,7 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
                 if (SELECTED.has(val)) row.classList.add('cmcc-picked');
                 const t2 = el('span', 'cmcc-entry-text', e.text);
                 row.appendChild(t2);
+                // 点整行 = 切换这一条（L3 没有再下层，不需要级联）
                 row.onclick = () => {
                     if (SELECTED.has(val)) SELECTED.delete(val);
                     else SELECTED.add(val);
@@ -687,12 +766,16 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
             const wcb = document.createElement('input');
             wcb.type = 'checkbox';
             wcb.className = 'cmcc-check cmcc-world-check';
-            wcb.checked = SELECTED_WORLDS.has(w.key);
-            wcb.title = '勾选整个世界（删除时会删掉它下面全部存档）';
+            const wState = worldSelState(w.key, snap.worlds);
+            wcb.checked = wState === 'all';
+            wcb.indeterminate = wState === 'some';   // 半选：部分勾上
+            wcb.title = '勾选整个世界（连同它下面所有存档与记忆）';
             wcb.onclick = (ev) => ev.stopPropagation();
             wcb.onchange = () => {
+                // ★ 级联：勾世界 = 把它下面所有存档和记忆一起勾上
                 if (wcb.checked) SELECTED_WORLDS.add(w.key);
                 else SELECTED_WORLDS.delete(w.key);
+                setWorldAll(w.key, wcb.checked, snap.worlds);
                 renderTopPanel({ ctx, api, onGotoSettings });
             };
             wh.appendChild(wcb);
@@ -741,12 +824,16 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
                 const scb = document.createElement('input');
                 scb.type = 'checkbox';
                 scb.className = 'cmcc-check cmcc-save-check';
-                scb.checked = SELECTED_SAVES.has(sKeyId);
-                scb.title = '勾选这个存档（删除时删掉它下面全部记忆）';
+                const sState = saveSelState(w.key, s.key, snap.worlds);
+                scb.checked = sState === 'all';
+                scb.indeterminate = sState === 'some';   // 半选：部分勾上
+                scb.title = '勾选这个存档（连同它下面全部记忆）';
                 scb.onclick = (ev) => ev.stopPropagation();
                 scb.onchange = () => {
+                    // ★ 级联：勾存档 = 把它下面所有记忆一起勾上
                     if (scb.checked) SELECTED_SAVES.add(sKeyId);
                     else SELECTED_SAVES.delete(sKeyId);
+                    setSaveEntries(w.key, s.key, scb.checked, snap.worlds);
                     renderTopPanel({ ctx, api, onGotoSettings });
                 };
                 sh.appendChild(scb);

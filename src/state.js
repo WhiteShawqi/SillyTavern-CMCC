@@ -22,7 +22,13 @@ export const DEFAULT_SETTINGS = {
      */
     personaMode: 'builtin',
 
-    /** 内置人设（personaMode==='builtin' 时使用） */
+    /**
+     * 内置人设（personaMode==='builtin' 时使用）
+     *
+     * 保留单对象形态**仅为向后兼容**：老版本存的就是这一个对象，
+     * normalizeSettings 会把它迁进 builtins 列表（见下）。
+     * 新代码一律用 builtins + activeBuiltinId。
+     */
     builtin: {
         name: '同伴',
         description: '',
@@ -30,19 +36,27 @@ export const DEFAULT_SETTINGS = {
         scenario: '',
     },
 
+    /**
+     * 内置人设**列表**（用户要求：目前只有一个，没办法同时存在多个预设）
+     * 每项：{ id, name, description, personality, scenario }
+     */
+    builtins: [],
+    /** 当前激活的内置人设 id；空则用列表第一项 */
+    activeBuiltinId: '',
+
     /** personaMode==='card' 时，指向角色卡文件名（avatar） */
     companionAvatar: '',
 
     /** 记忆直接注入提示词（不依赖世界书挂载） */
     injectMemory: true,
     /** 「最近」注入多少条（用户要求 5~10） */
-    recentMemoryLimit: 8,
+    recentMemoryLimit: 10,
     /** 「相似旧事」注入多少条（用户要求 2~5） */
-    relevantMemoryLimit: 4,
+    relevantMemoryLimit: 5,
     /** 记忆注入的 token 预算 */
     memoryBudget: 1800,
     /** 引导文本的 token 预算 */
-    tokenBudget: 600,
+    tokenBudget: 2400,
     /** 每个存档最多注入多少条记忆 */
     saveMemoryLimit: 500,
     /** 自动整理：每多少条消息一次 */
@@ -63,7 +77,62 @@ export const DEFAULT_SETTINGS = {
 export function normalizeSettings(s) {
     const out = Object.assign({}, DEFAULT_SETTINGS, s || {});
     out.builtin = Object.assign({}, DEFAULT_SETTINGS.builtin, s?.builtin || {});
+
+    // ── 内置人设列表：老数据自动迁移 ──
+    // 老版本只有 settings.builtin 一个对象；如果列表为空，
+    // 而那个对象有内容（或名字不是默认值），就把它变成列表第一项。
+    let list = Array.isArray(s?.builtins) ? s.builtins.slice() : [];
+    list = list
+        .filter((x) => x && typeof x === 'object')
+        .map((x) => ({
+            id: String(x.id || nextPersonaId()),
+            name: String(x.name || '未命名'),
+            description: String(x.description || ''),
+            personality: String(x.personality || ''),
+            scenario: String(x.scenario || ''),
+        }));
+
+    const legacy = out.builtin || {};
+    const legacyHasContent = !!(legacy.name && legacy.name !== '同伴')
+        || !!(legacy.description || legacy.personality || legacy.scenario);
+    if (!list.length && legacyHasContent) {
+        list = [{
+            id: nextPersonaId(),
+            name: legacy.name || '同伴',
+            description: legacy.description || '',
+            personality: legacy.personality || '',
+            scenario: legacy.scenario || '',
+        }];
+    }
+    if (!list.length) {
+        // 全新安装：给一个空的默认项，界面上不至于什么都没有
+        list = [{
+            id: nextPersonaId(),
+            name: '同伴',
+            description: '', personality: '', scenario: '',
+        }];
+    }
+
+    out.builtins = list;
+    const hasActive = list.some((x) => x.id === out.activeBuiltinId);
+    if (!hasActive) out.activeBuiltinId = list[0].id;
+    out.builtin = activePersonaOf(out);
     return out;
+}
+
+/** 生成一个人设 id */
+let __personaSeq = 0;
+export function nextPersonaId() {
+    __personaSeq += 1;
+    return 'p' + Date.now().toString(36) + '_' + __personaSeq;
+}
+
+/** 取当前激活的内置人设（对象）；列表空则返回默认空壳 */
+export function activePersonaOf(settings) {
+    const list = Array.isArray(settings?.builtins) ? settings.builtins : [];
+    if (!list.length) return Object.assign({}, DEFAULT_SETTINGS.builtin);
+    const hit = list.find((x) => x.id === settings.activeBuiltinId);
+    return hit || list[0];
 }
 
 // ─────────────────────────────────────────────
