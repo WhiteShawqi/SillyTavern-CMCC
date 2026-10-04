@@ -30,7 +30,7 @@ import {
 
 import { buildGuide, injectIntoRequest, estimateTokens } from './src/inject.js';
 import { renderPanel } from './src/ui.js';
-import { mountTopDrawer, renderTopPanel, openTopPanel } from './src/topbar.js';
+import { mountTopDrawer, renderTopPanel, openTopPanel, setRenderHook } from './src/topbar.js';
 
 const LOG = `[${APP_ABBR}]`;
 const log = (...a) => console.log(LOG, ...a);
@@ -569,9 +569,28 @@ jQuery(async () => {
 
     // 顶部入口（酒馆顶部图标栏）
     try {
+        // 注册重渲染钩子，供"打开面板时自愈"使用
+        setRenderHook(() => api.refreshTop());
         mountTopDrawer();
         refreshTop();
     } catch (e) { warn('顶部入口挂载失败', e); }
+
+    // ST 有时会在扩展加载后重建 / 异步补完 DOM（例如角色列表就绪时），
+    // 若那时我们的图标被移除，这里补挂一次。
+    setTimeout(() => {
+        try {
+            if (!document.getElementById('cmcc-top-drawer')) {
+                warn('图标不见了，重新挂载');
+                mountTopDrawer();
+            }
+            // 面板存在但内容是空的 → 再渲染一次
+            const b = document.getElementById('cmcc-top-panel_body');
+            if (b && b.children.length === 0) {
+                warn('面板为空，补渲染');
+                refreshTop();
+            }
+        } catch (e) { warn('补挂失败', e); }
+    }, 1500);
 
     // 扩展到设置页（和酒馆助手同位置）
     panel = renderPanel({

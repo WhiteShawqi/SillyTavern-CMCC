@@ -15,6 +15,11 @@
 
 const DRAWER_ID = 'cmcc-top-drawer';
 const PANEL_ID = 'cmcc-top-panel';
+const LOG_TAG = '[CMCC]';
+
+/** 重渲染钩子：由 index.js 注册（避免 topbar 反向依赖 index） */
+let RENDER_HOOK = null;
+export function setRenderHook(fn) { RENDER_HOOK = fn; }
 
 function el(tag, cls, html) {
     const e = document.createElement(tag);
@@ -23,9 +28,21 @@ function el(tag, cls, html) {
     return e;
 }
 
-/** 建抽屉骨架（只建一次） */
+/**
+ * 建抽屉骨架（幂等）
+ * 若已存在但**不完整**（缺 body，例如 ST 重建过 DOM），会拆掉重建 ——
+ * 否则会出现"图标在、面板只有标题、body 永远为空"的静默故障。
+ */
 export function mountTopDrawer() {
-    if (document.getElementById(DRAWER_ID)) return;
+    const exist = document.getElementById(DRAWER_ID);
+    if (exist) {
+        const okDrawer = !!exist.querySelector('.drawer-toggle');
+        const okPanel = !!document.getElementById(PANEL_ID);
+        const okBody = !!document.getElementById(PANEL_ID + '_body');
+        if (okDrawer && okPanel && okBody) return;   // 完整，不用动
+        console.warn(LOG_TAG, '抽屉骨架不完整，拆掉重建', { okDrawer, okPanel, okBody });
+        exist.remove();
+    }
 
     const drawer = el('div', 'drawer');
     drawer.id = DRAWER_ID;
@@ -43,8 +60,17 @@ export function mountTopDrawer() {
     toggle.addEventListener('click', (ev) => {
         ev.preventDefault();
         ev.stopPropagation();
-        if (isTopPanelOpen()) closeDrawer();
-        else openTopPanel();
+        if (isTopPanelOpen()) {
+            closeDrawer();
+        } else {
+            openTopPanel();
+            // 自愈：打开时若 body 意外为空（ST 重建过 DOM 等），补渲染一次
+            const b = document.getElementById(PANEL_ID + '_body');
+            if (b && b.children.length === 0) {
+                console.warn(LOG_TAG, '打开时发现面板为空，触发补渲染');
+                try { RENDER_HOOK?.(); } catch (e) { console.error(LOG_TAG, e); }
+            }
+        }
     });
 
     // 面板
@@ -185,13 +211,27 @@ document.addEventListener('click', (e) => {
  * @param {() => void} o.onGotoSettings  跳去设置页切换陪伴者
  */
 export function renderTopPanel({ ctx, api, onGotoSettings }) {
-    const body = document.getElementById(PANEL_ID + '_body');
-    if (!body) return;
+    // 健壮性：若骨架不在（ST 重建过 DOM / 首次加载时序），先补建
+    let body = document.getElementById(PANEL_ID + '_body');
+    if (!body) {
+        mountTopDrawer();
+        body = document.getElementById(PANEL_ID + '_body');
+    }
+    if (!body) {
+        // 仍然没有：说明 host 结构异常，把原因留在控制台而不是静默失败
+        console.error(LOG_TAG, '找不到面板容器', {
+            drawer: !!document.getElementById(DRAWER_ID),
+            panel: !!document.getElementById(PANEL_ID),
+            host: !!document.getElementById('top-settings-holder'),
+        });
+        return;
+    }
     body.innerHTML = '';
 
     let snap;
     try { snap = api.snapshot(); } catch (e) {
-        body.appendChild(el('div', 'cmcc-empty', '读取失败，看控制台'));
+        console.error(LOG_TAG, 'snapshot 失败', e);
+        body.appendChild(el('div', 'cmcc-empty', '读取失败：' + String(e && e.message || e)));
         return;
     }
 
