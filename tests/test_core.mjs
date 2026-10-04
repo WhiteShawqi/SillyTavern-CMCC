@@ -448,8 +448,8 @@ chk(stripBlocks('a\n```js\nvar x=1;\n`\nb').includes('var x=1;'), 'stripBlocks �
 // commandSpec
 const spec = commandSpec();
 chk(spec.includes('cmcc'), '格式说明含 cmcc');
-chk(spec.includes('+save|'), '★ 格式说明给了行式示例');
-chk(spec.includes('shared'), '格式说明提到 shared');
+chk(spec.includes('一行一条记忆'), '★ 格式说明要求一行一条，不带前缀');
+chk(!spec.includes('+save|'), '★ 格式说明不再要求 +scope| 前缀');
 chk(spec.includes('最多 5 条'), '格式说明有数量约束');
 console.log('');
 
@@ -715,7 +715,7 @@ chk(parseBlock('<p>+save|event|带p标签</p>').entries[0].text === '带p标签'
 const sp = commandSpec();
 chk(sp.includes('<details'), '★ 格式说明用 details');
 chk(sp.includes('本次记忆'), '格式说明含 summary 标题');
-chk(sp.includes('不要用 world'), '★ 格式说明明确禁用 world 范围');
+chk(sp.includes('不要写范围'), '★ 格式说明明确不用写范围');
 console.log('');
 
 console.log(fail === 0 ? `✓ 全部通过 (${pass} 项)` : `❌ 失败 ${fail} 项 / 共 ${pass + fail} 项`);

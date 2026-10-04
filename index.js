@@ -255,10 +255,23 @@ async function syncPosition(p, { persist = true } = {}) {
         .sort((a, b) => (b[1].lastSeen || 0) - (a[1].lastSeen || 0))
         .map(([, s]) => s.label);
 
+    // ★ 自动检测新存档：一进到没见过的聊天就立刻建好并标记
+    //   （用户要求：只要是新存档就自动加一个，后续记忆都存进去）
+    //   仍然遵守「没有有效聊天 ID 就不建」—— 否则又会存档爆炸。
+    if (isNew && p.sKey && persist) {
+        const { created } = ensurePosition(p);
+        if (created?.save) {
+            log('检测到新存档，已自动创建（%s / %s）', p.wLabel, p.saveLabel || p.sKey);
+            await saveToBook(book);
+            panel?.refresh();
+        }
+    }
+
+    const w2 = CACHE.worlds[p.wKey] || w;
     return {
-        saveLabel: save?.label || p.saveLabel || '本次',
-        saveCount: w
-            ? Object.keys(w.saves).filter((k) => k !== WORLDBOOK_CHANNEL).length
+        saveLabel: w2?.saves?.[p.sKey]?.label || p.saveLabel || '本次',
+        saveCount: w2
+            ? Object.keys(w2.saves).filter((k) => k !== WORLDBOOK_CHANNEL).length
             : 0,
         otherSaveLabels: others,
         switched: switched || changedWorld,

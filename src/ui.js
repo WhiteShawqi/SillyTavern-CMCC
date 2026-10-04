@@ -128,6 +128,11 @@ export function renderPanel(o) {
         }
     };
     const toggleHandler = () => {
+        // 诊断日志：设置面板点不动时，这几行能直接说明问题出在哪
+        console.log('[CMCC] 设置页标题被点击:',
+            'SETTINGS_EXPANDED =', SETTINGS_EXPANDED,
+            '| display =', JSON.stringify(content.style.display),
+            '| maxHeight =', JSON.stringify(content.style.maxHeight));
         // 第一次点击才启用过渡，并用内联 display 把当前状态落实（首屏不播动画）
         if (!content.classList.contains('cmcc-animated')) {
             content.style.display = 'block';
@@ -136,6 +141,11 @@ export function renderPanel(o) {
             void content.offsetHeight;
         }
         applyExpand(!SETTINGS_EXPANDED);
+        console.log('[CMCC] 切换后:',
+            '现在', SETTINGS_EXPANDED ? '展开' : '收起',
+            '| display =', JSON.stringify(content.style.display),
+            '| maxHeight =', JSON.stringify(content.style.maxHeight),
+            '| 实测高度 =', Math.round(content.getBoundingClientRect().height));
 
         // 兜底：展开后若量到高度仍为 0，直接放开限制。
         // 宁可没有动画，也不能"点了没反应"。
@@ -145,7 +155,7 @@ export function renderPanel(o) {
                 if (content.getBoundingClientRect().height < 10) {
                     content.style.display = 'block';
                     content.style.maxHeight = '';
-                    console.warn('[CMCC] 设置页展开高度异常，已强制放开 max-height');
+                    console.warn('[CMCC] 设置页展开后高度仍 <10px，已强制放开 max-height');
                 }
             }, 320);
         }

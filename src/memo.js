@@ -154,8 +154,11 @@ export function parseBlock(content) {
             if (e) entries.push(e);
             else errors.push('条目缺 text：' + line.slice(0, 40));
         } else {
-            // 只有一段：当作当前存档的一条记忆
-            const e = normalizeEntry({ scope: 'save', text: s });
+            // ★ 新格式：纯文本行，一行一条记忆（不带 scope|kind| 前缀）
+            //   顺手剥掉 AI 可能加的编号 / 项目符号
+            const plain = s.replace(/^\s*(?:[-*•]|\d+[.、)])\s*/, '').trim();
+            if (!plain) continue;
+            const e = normalizeEntry({ scope: 'save', text: plain });
             if (e) entries.push(e);
         }
         if (entries.length >= MAX_ENTRIES_PER_BLOCK) break;
@@ -191,24 +194,21 @@ export function commandSpec() {
     return [
         '【每次生成正文后，在最后追加一个记忆块】',
         '',
-        '格式（严格照抄，这是一个可折叠的 HTML 块）：',
+        '格式（严格照抄）：',
         '',
         '<details class="cmcc"><summary>本次记忆</summary>',
-        '',
-        '+save|event|这一节里真正发生、你希望记住的事（30~50 字，写清谁在哪做了什么）',
-        '+save|event|另一件事',
-        '+shared|rel|跨越所有世界都成立的事（比如你和 {user} 的关系）',
-        '',
+        '第一条记忆，30~50 字，写清楚谁、在哪、做了什么、结果如何',
+        '第二条记忆，同样 30~50 字',
         '</details>',
         '',
         '规则：',
         '- 只在**确实有值得记的事**时才输出这个块；没有就不输出（不要硬凑）。',
-        '- 每行一条，格式 `+范围|类型|内容`。',
-        '- 范围二选一：`save`＝只属于当前这一次；`shared`＝所有世界通用。',
-        '  （**不要用 world 范围** —— 它已取消，写了也当 save 处理。）',
-        '- 类型随便填一个短词（event / fact / rel / pref），只作分类。',
-        '- 内容写成**你自己的一句话**，30~50 字，要有具体细节，不要写空话。',
-        '- 一次最多 5 条，只写重要的，不要复述整段剧情。',
+        '- **一行一条记忆，直接写内容**。不要加前缀、不要编号、不要写范围。',
+        '  你是不是在哪个存档、哪个世界，插件会自己记，不用你写。',
+        '- 每条 30~50 字，要有具体细节，不要写成"发生了某事"这种空话。',
+        '- 用你自己的视角叙述，省略主语（"我"不用写出来）。',
+        '- 优先记录：地点变化、遇到的人、关键事件、与 {user} 之间的互动。',
+        '- 最多 5 条，只写重要的，不要复述整段剧情。',
         '- 这个块是给你自己留的备忘，正文里**不要提到它**。',
     ].join('\n');
 }
