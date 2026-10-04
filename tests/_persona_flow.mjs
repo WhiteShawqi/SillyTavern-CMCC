@@ -61,7 +61,7 @@ chk(r1.ok, '★ 删除成功');
 chk(settings.builtins.length === 1, `★ 列表剩 1 个（实际 ${settings.builtins.length}）`);
 chk(settings.builtins[0].name === '同伴', '★ 剩下的是「同伴」');
 chk(settings.builtins.every((x) => x.id !== 'p2'), '★ 被删的确实不在了');
-chk(settings.activeBuiltinId === 'p1', '★ 激活项切到剩下的那个');
+chk(settings.activeBuiltinId === settings.builtins[0].id, '★ 激活项切到剩下的那个');
 
 // ══════════════════════════════════════════════
 console.log('');
@@ -148,7 +148,8 @@ console.log('【6】★ 真实 bug 复现：删完最后一个再导入，再删
     console.log('  导入后:', brief(s));
 
     // 删掉「同伴」
-    const r = deletePersona(s, 'p1') || deletePersona(s, s.builtins.find((x) => x.name === '同伴')?.id);
+    const tongId = (s.builtins.find((x) => x.name === '同伴') || {}).id;
+    const r = deletePersona(s, tongId);
     console.log('  删同伴 →', r.ok ? 'ok' : r.why);
     console.log('  删除后:', brief(s));
     chk(s.builtins.length === 1 && s.builtins[0].name === '拉普兰德',
