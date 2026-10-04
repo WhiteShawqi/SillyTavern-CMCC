@@ -208,9 +208,34 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
     who.appendChild(switchBtn);
     body.appendChild(who);
 
+    // 未选陪伴者：给一个明确的引导块（不要只留一行，容易被误认为"面板是空的"）
     if (!snap.companionAvatar) {
-        body.appendChild(el('div', 'cmcc-empty',
-            '还没有选择陪伴角色。点上面「切换 →」到扩展设置里选一张卡。'));
+        const tip = el('div', 'cmcc-top-section cmcc-empty-state');
+        tip.innerHTML = [
+            '<div style="font-weight:bold;margin-bottom:6px;">还没有选择陪伴角色</div>',
+            '<div style="opacity:.8;line-height:1.6;">',
+            '① 点上面的「切换 →」跳到扩展设置<br>',
+            '② 在「陪伴角色卡」里选一张卡<br>',
+            '③ 勾上「启用」<br>',
+            '④ 回到这里，人设与记忆就会显示出来',
+            '</div>',
+        ].join('');
+        body.appendChild(tip);
+
+        const tools0 = el('div', 'cmcc-btns');
+        const bGo = el('button', 'menu_button', '去选陪伴角色');
+        bGo.onclick = () => { closeDrawer(); onGotoSettings(); };
+        tools0.appendChild(bGo);
+        const bDiag = el('button', 'menu_button cmcc-mini', '诊断信息');
+        bDiag.title = '复制当前状态，便于排查问题';
+        bDiag.onclick = async () => {
+            const txt = JSON.stringify(collectDiagnostics(ctx, api), null, 2);
+            console.log('[CMCC] 诊断', txt);
+            try { await navigator.clipboard.writeText(txt); ctx.toastr?.success?.('诊断信息已复制'); }
+            catch (e) { ctx.toastr?.info?.('诊断信息已打印到控制台（F12）'); }
+        };
+        tools0.appendChild(bDiag);
+        body.appendChild(tools0);
         return;
     }
 
