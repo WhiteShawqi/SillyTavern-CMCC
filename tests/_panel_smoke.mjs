@@ -202,9 +202,10 @@ header.click();
 const h1 = applyState();
 header.click();
 const h2 = applyState();
-chk(h0.d === 'block', '初始展开（display:block）');
-chk(h1.d === 'none', '★ 点一次 → display:none（收起）');
-chk(h2.d === 'block', '★ 再点 → display:block（展开）');
+chk(h0.d === 'none', '★ 初始收起（display:none）');
+chk(h1.d === 'block', '★ 点一次 → display:block（展开）');
+chk(h2.d === 'none', '★ 再点 → display:none（收起）');
+chk(h1.h > 0, '★ 展开后有高度（内容不是空的）');
 
 // 刷新不抛错
 try {

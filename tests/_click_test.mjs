@@ -128,30 +128,36 @@ function fire(el, type) {
 let pass = 0, fail = 0;
 const chk = (c, m) => { c ? (pass++, console.log('  ✓ ' + m)) : (fail++, console.log('  ❌ ' + m)); };
 
+// ★ 默认收起（用户要求）：初始 display:none、箭头 down
+chk(content.style.display === 'none', '★ 初始 display:none（默认收起）');
+chk(chev.classList.contains('down'), '初始箭头 down');
+
 console.log('');
-console.log('=== 点第 1 次（应收起）===');
+console.log('=== 点第 1 次（应展开）===');
 const n1 = fire(header, 'click');
 console.log('  触发监听器数 =', n1);
-console.log('  display =', JSON.stringify(content.style.display), '| maxHeight =', JSON.stringify(content.style.maxHeight));
+console.log('  display =', JSON.stringify(content.style.display));
 console.log('  高度 =', content.getBoundingClientRect().height);
 chk(n1 >= 1, '★ header 上有 click 监听器（没有的话点不动）');
-chk(chev.classList.contains('down'), '箭头变成 down');
+chk(content.style.display === 'block', '★ display 变成 block');
+chk(chev.classList.contains('up'), '箭头变成 up');
+chk(content.getBoundingClientRect().height > 0, '★ 高度 > 0（真的展开了）');
+
+console.log('');
+console.log('=== 点第 2 次（应收起）===');
+fire(header, 'click');
+console.log('  display =', JSON.stringify(content.style.display));
+console.log('  高度 =', content.getBoundingClientRect().height);
+chk(chev.classList.contains('down'), '箭头变回 down');
+chk(content.style.display === 'none', '★ display 变成 none（收起）');
 chk(content.getBoundingClientRect().height === 0, '★ 高度收成 0');
 
 console.log('');
-console.log('=== 点第 2 次（应展开）===');
+console.log('=== 点第 3 次（再展开）===');
 fire(header, 'click');
-console.log('  display =', JSON.stringify(content.style.display), '| maxHeight =', JSON.stringify(content.style.maxHeight));
-console.log('  高度 =', content.getBoundingClientRect().height);
-chk(chev.classList.contains('up'), '箭头变回 up');
-chk(!!content.style.display && content.style.display !== 'none', '★ display 不是 none');
-chk(content.style.maxHeight !== '0px', '★ maxHeight 不是 0（这条最关键）');
-
-console.log('');
-console.log('=== 点第 3 次（再收起）===');
-fire(header, 'click');
-chk(chev.classList.contains('down'), '箭头又变 down');
-chk(content.style.maxHeight === '0px' || content.style.display === 'none', '再次收起');
+chk(chev.classList.contains('up'), '箭头又变 up');
+chk(content.style.display === 'block', '★ 再次展开，且内容还在');
+chk(content.getBoundingClientRect().height > 0, '高度恢复');
 
 console.log('');
 console.log(fail === 0 ? `✓ 全部通过 (${pass} 项)` : `❌ 失败 ${fail} 项 / 共 ${pass + fail} 项`);

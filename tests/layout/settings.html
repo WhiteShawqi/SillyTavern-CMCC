@@ -145,11 +145,22 @@ try {
         steps.push(step('点3次'));
 
         result.steps = steps;
-        result.initExpanded = steps[0].h > 0 && steps[0].display === 'block';
-        result.collapseHidden = steps[1].display === 'none' && steps[1].h === 0;
-        result.expandRestored = steps[2].display === 'block' && steps[2].h > 0;
-        result.reCollapseHidden = steps[3].display === 'none' && steps[3].h === 0;
-        result.chevToggles = steps[0].up && !steps[1].up && steps[2].up && !steps[3].up;
+        // ★ 默认收起（用户要求）：初始 display:none、高度 0
+        result.initCollapsed = steps[0].display === 'none' && steps[0].h === 0;
+        // 但标题行要看得见、启用开关要能操作
+        result.headerVisible = header.getBoundingClientRect().height > 10;
+        result.switchVisible = (() => {
+            const sw = panel.querySelector('.cmcc-switch, .cmcc-switch-inline');
+            if (!sw) return false;
+            const r = sw.getBoundingClientRect();
+            return r.height > 4 && r.width > 4;
+        })();
+        result.expandWorks = steps[1].display === 'block' && steps[1].h > 0;
+        result.collapseWorks = steps[2].display === 'none' && steps[2].h === 0;
+        result.expandAgain = steps[3].display === 'block' && steps[3].h > 0;
+        result.chevToggles = !steps[0].up && steps[1].up && !steps[2].up && steps[3].up;
+        // ★ 展开后内容不能是空的（收起时若不渲染，展开就会空白）
+        result.contentNotEmpty = steps[3].h > 200;
 
         // 结构检查
         result.hasPersonaBar = !!panel.querySelector('.cmcc-pbar');
@@ -159,7 +170,8 @@ try {
         // ★ 赞助按钮：必须是真链接、指向爱发电、且真的看得见
         // ⚠ 注意：上面刚点过三次，面板停在「收起」状态。
         //   收起时 display:none，量到的尺寸是 0 —— 所以要先展开再量。
-        if (steps[3].display === 'none') header.click();
+        // 经过上面三次点击，此刻是展开状态（steps[3] = 展开）
+        if (steps[3].display !== 'block') header.click();
         await sleep(120);
 
         const spon = panel.querySelector('.cmcc-support-btn');
@@ -183,8 +195,9 @@ try {
         result.visibleDescendants = visibles.length;
 
         result.ok = errors.length === 0
-            && result.initExpanded && result.collapseHidden
-            && result.expandRestored && result.reCollapseHidden
+            && result.initCollapsed && result.headerVisible && result.switchVisible
+            && result.expandWorks && result.collapseWorks && result.expandAgain
+            && result.contentNotEmpty
             && result.chevToggles && result.hasPersonaBar
             && result.personaOptions === 2 && result.bars === 2
             // 赞助按钮
