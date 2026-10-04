@@ -1,0 +1,223 @@
+/* 跨世界陪伴角色 (CMCC) · 面板样式 */
+
+.cmcc-panel {
+    margin: 8px 0;
+    padding: 10px 12px;
+    border: 1px solid var(--SmartThemeBorderColor, #444);
+    border-radius: 8px;
+    background: var(--SmartThemeBlurTintColor, rgba(0 0 0 / 0.2));
+    font-size: 0.92em;
+}
+
+.cmcc-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+
+.cmcc-head b { font-size: 1.02em; }
+
+.cmcc-sub {
+    opacity: 0.6;
+    font-size: 0.85em;
+    margin-left: 6px;
+}
+
+.cmcc-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.cmcc-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin: 6px 0;
+    flex-wrap: wrap;
+}
+
+.cmcc-bar { gap: 6px; }
+
+.cmcc-label {
+    opacity: 0.75;
+    white-space: nowrap;
+    font-size: 0.9em;
+}
+
+.cmcc-select {
+    flex: 1 1 200px;
+    min-width: 140px;
+}
+
+.cmcc-opts {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin: 8px 0;
+}
+
+.cmcc-chk {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    user-select: none;
+    font-size: 0.9em;
+}
+
+.cmcc-num {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.cmcc-num input { width: 66px; }
+
+/* 统计 */
+.cmcc-stats {
+    margin: 8px 0;
+    padding: 7px 9px;
+    border-radius: 6px;
+    background: rgba(127 127 127 / 0.12);
+    line-height: 1.6;
+    font-size: 0.88em;
+}
+
+.cmcc-stat-line { opacity: 0.9; }
+.cmcc-stat-line b { opacity: 1; }
+.cmcc-stat-line code {
+    background: rgba(0 0 0 / 0.25);
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 0.95em;
+}
+
+.cmcc-hint {
+    opacity: 0.62;
+    font-size: 0.92em;
+}
+
+/* 记忆列表 */
+.cmcc-list {
+    max-height: 420px;
+    overflow-y: auto;
+    margin: 6px 0;
+    padding-right: 4px;
+}
+
+.cmcc-world {
+    margin: 8px 0;
+    padding: 7px 9px;
+    border-left: 2px solid var(--SmartThemeQuoteColor, #7aa2f7);
+    background: rgba(127 127 127 / 0.07);
+    border-radius: 0 6px 6px 0;
+}
+
+.cmcc-world.cmcc-shared {
+    border-left-color: #d9a441;
+}
+
+.cmcc-world-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.cmcc-world-title {
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.cmcc-world-title:hover { text-decoration: underline dotted; }
+
+.cmcc-meta {
+    opacity: 0.6;
+    font-size: 0.88em;
+}
+
+.cmcc-save {
+    margin: 6px 0 6px 8px;
+    padding-left: 8px;
+    border-left: 1px dashed rgba(127 127 127 / 0.4);
+}
+
+.cmcc-save-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.cmcc-save-title {
+    cursor: pointer;
+    opacity: 0.92;
+}
+
+.cmcc-save-title:hover { text-decoration: underline dotted; }
+
+.cmcc-entries {
+    margin: 3px 0 0 4px;
+}
+
+.cmcc-entry {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    line-height: 1.45;
+    padding: 1px 0;
+}
+
+.cmcc-entry-text {
+    flex: 1;
+    cursor: pointer;
+    opacity: 0.88;
+}
+
+.cmcc-entry-text:hover { opacity: 1; }
+
+.cmcc-x {
+    background: none;
+    border: none;
+    color: inherit;
+    opacity: 0.38;
+    cursor: pointer;
+    padding: 0 3px;
+    font-size: 1.05em;
+    line-height: 1;
+    flex: 0 0 auto;
+}
+
+.cmcc-x:hover { opacity: 1; color: #ff6b6b; }
+
+.cmcc-add { margin-top: 3px; }
+
+.cmcc-mini {
+    font-size: 0.86em;
+    padding: 2px 8px;
+    opacity: 0.85;
+}
+
+.cmcc-empty {
+    opacity: 0.55;
+    font-style: italic;
+    padding: 3px 0;
+}
+
+.cmcc-more {
+    opacity: 0.55;
+    font-size: 0.88em;
+    padding: 2px 0 2px 6px;
+}
+
+.cmcc-btns {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+}
