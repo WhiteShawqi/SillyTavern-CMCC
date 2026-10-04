@@ -30,6 +30,7 @@ import {
 
 import { buildGuide, injectIntoRequest, estimateTokens } from './src/inject.js';
 import { renderPanel } from './src/ui.js';
+import { mountTopDrawer, renderTopPanel, openTopPanel } from './src/topbar.js';
 
 const LOG = `[${APP_ABBR}]`;
 const log = (...a) => console.log(LOG, ...a);
@@ -488,8 +489,34 @@ const api = {
         await loadFromBook();
         panel?.refresh();
     },
+    /**
+     * 改陪伴角色卡的人设字段（description / personality / scenario / first_mes）
+     * 直接写回角色卡并保存；同时刷新世界书里的「[CMCC] 她是谁」
+     */
+    async editPersona(key, value) {
+        const av = settings.companionAvatar;
+        const comp = findCompanion(av);
+        if (!comp) { ctx().toastr?.warning?.('找不到陪伴角色卡'); return false; }
+        const d = comp.data || comp;
+        d[key] = value;
+        try {
+            await ctx().saveCharacterDebounced?.();
+        } catch (e) { /* ignore */ }
+        // 部分 ST 版本用这个
+        try { ctx().saveSettingsDebounced?.(); } catch (e) { /* ignore */ }
+        // 同步世界书里的人设词条
+        await api.setCompanion(av);
+        ctx().toastr?.success?.(`已更新「${key}」（若未落盘，请在角色管理里点保存）`);
+        return true;
+    },
     summarize: (m) => summarize(m),
     currentPos,
+    /** 顶部面板重绘 */
+    refreshTop() {
+        try {
+            renderTopPanel({ ctx: ctx(), api, onGotoSettings: gotoPluginSettings });
+        } catch (e) { /* ignore */ }
+    },
 };
 
 // ─────────────────────────────────────────────
@@ -501,6 +528,24 @@ function onSave() {
     ctx().saveSettingsDebounced?.();
 }
 
+/** 跳到扩展设置页（和酒馆助手同位置）并高亮本插件 */
+function gotoPluginSettings() {
+    try {
+        const btn = document.getElementById('extensions-settings-button')
+            ?.querySelector('.drawer-toggle');
+        const panelEl = document.getElementById('rm_extensions_block');
+        if (panelEl && !panelEl.classList.contains('openDrawer')) {
+            btn?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        }
+        setTimeout(() => {
+            const root = document.getElementById('cmcc_settings');
+            root?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            root?.classList.add('cmcc-flash');
+            setTimeout(() => root?.classList.remove('cmcc-flash'), 1200);
+        }, 260);
+    } catch (e) { /* ignore */ }
+}
+
 jQuery(async () => {
     extension_settings[MODULE] = extension_settings[MODULE] || {};
     settings = Object.assign({}, DEFAULT_SETTINGS, extension_settings[MODULE]);
@@ -510,7 +555,20 @@ jQuery(async () => {
         try { await loadFromBook(); } catch (e) { warn('载入世界书失败', e); }
     }
 
-    panel = renderPanel({ settings, onSave, ctx: ctx(), api });
+    // 顶部入口（酒馆顶部图标栏）
+    try {
+        mountTopDrawer();
+        refreshTop();
+    } catch (e) { warn('顶部入口挂载失败', e); }
+
+    // 扩展到设置页（和酒馆助手同位置）
+    panel = renderPanel({
+        settings, onSave, ctx: ctx(), api,
+        onOpenTop: () => {
+            openTopPanel();
+            refreshTop();
+        },
+    });
 
     if (event_types.CHAT_COMPLETION_SETTINGS_READY) {
         eventSource.on(event_types.CHAT_COMPLETION_SETTINGS_READY, onSettingsReady);
@@ -527,6 +585,7 @@ jQuery(async () => {
         eventSource.on(event_types.CHAT_CHANGED, async () => {
             try { await syncPosition(currentPos()); } catch (e) { /* ignore */ }
             panel?.refresh();
+            refreshTop();
         });
     }
 
