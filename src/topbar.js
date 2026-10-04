@@ -59,6 +59,24 @@ export function mountTopDrawer() {
         closeDrawer();
     };
     head.appendChild(closeBtn);
+
+    // 诊断：右键点标题 → 把内部状态复制到剪贴板（不用开 F12）
+    head.title = '右键点这里可复制诊断信息';
+    head.addEventListener('contextmenu', async (ev) => {
+        ev.preventDefault();
+        const info = collectDiagnostics(ctx, api);
+        const txt = JSON.stringify(info, null, 2);
+        try {
+            await navigator.clipboard.writeText(txt);
+            ctx.toastr?.success?.('诊断信息已复制到剪贴板');
+        } catch (e) {
+            // 剪贴板不可用时退化为控制台 + 弹窗
+            console.log('[CMCC] 诊断', info);
+            try { await ctx.callGenericPopup('诊断信息（控制台也有）：\n\n' + txt, ctx.POPUP_TYPE.TEXT); }
+            catch (_) { ctx.toastr?.info?.('诊断信息已打印到控制台'); }
+        }
+    });
+
     panel.appendChild(head);
 
     const body = el('div', 'cmcc-top-body');
@@ -79,6 +97,56 @@ export function mountTopDrawer() {
         // 点其他顶部图标时不抢（让 ST 自己处理）
         if (t?.closest?.('#top-settings-holder')) closeDrawer();
     });
+}
+
+/**
+ * 收集诊断信息（供"右键标题复制"使用）
+ * 目的：让用户不用开 F12 就能提供可定位的信息
+ */
+export function collectDiagnostics(ctx, api) {
+    const out = {
+        时间: new Date().toISOString(),
+        图标栏抽屉数: document.querySelectorAll('#top-settings-holder > .drawer').length,
+        各抽屉宽度: [...document.querySelectorAll('#top-settings-holder > .drawer')]
+            .map((d) => Math.round(d.getBoundingClientRect().width)),
+        CMCC面板存在: !!document.getElementById(PANEL_ID),
+        面板class: document.getElementById(PANEL_ID)?.className || null,
+        面板宽高: (() => {
+            const p = document.getElementById(PANEL_ID);
+            if (!p) return null;
+            const r = p.getBoundingClientRect();
+            return [Math.round(r.width), Math.round(r.height)];
+        })(),
+        面板计算样式: (() => {
+            const p = document.getElementById(PANEL_ID);
+            if (!p) return null;
+            const cs = getComputedStyle(p);
+            return { display: cs.display, position: cs.position, height: cs.height, overflow: cs.overflowY };
+        })(),
+        body存在: !!document.getElementById(PANEL_ID + '_body'),
+        body子元素数: document.getElementById(PANEL_ID + '_body')?.children.length ?? -1,
+        body高度: Math.round(document.getElementById(PANEL_ID + '_body')?.getBoundingClientRect().height || 0),
+        body文本前80字: (document.getElementById(PANEL_ID + '_body')?.textContent || '').trim().slice(0, 80),
+    };
+    try {
+        const snap = api.snapshot();
+        out.快照 = {
+            bookName: snap.bookName,
+            companionAvatar: snap.companionAvatar || '(空)',
+            worldCount: snap.stats?.worldCount,
+            totalEntries: snap.stats?.totalEntries,
+        };
+    } catch (e) {
+        out.快照错误 = String(e && e.message || e);
+    }
+    try {
+        const pos = api.currentPos();
+        out.当前位置 = { world: pos.wLabel, save: pos.sKey };
+    } catch (e) {
+        out.位置错误 = String(e && e.message || e);
+    }
+    out.角色卡总数 = (ctx.characters || []).length;
+    return out;
 }
 
 function closeDrawer() {

@@ -89,19 +89,24 @@ body {
 </style>
 
 <!-- ══ CMCC 自己的样式（被测对象）══ -->
-<link rel="stylesheet" href="../style.css">
+<link rel="stylesheet" href="./style.css">
 </head>
 <body>
 
-<!-- 复刻顶部图标栏结构 -->
+<!-- 复刻顶部图标栏结构。
+     真实 ST 有约 9~10 个抽屉，每个 .drawer 都想占 width:100%，
+     靠 flex 默认的 shrink 平摊成一排 —— 必须放够数量才能复现"图标错位"。 -->
 <div id="top-settings-holder">
-    <div class="drawer">
-        <div class="drawer-toggle"><div class="drawer-icon">⚙</div></div>
-    </div>
-    <div class="drawer">
-        <div class="drawer-toggle"><div class="drawer-icon">📖</div></div>
-    </div>
-    <!-- CMCC 会插到这里 -->
+    <div class="drawer"><div class="drawer-toggle"><div class="drawer-icon">⚙</div></div></div>
+    <div class="drawer"><div class="drawer-toggle"><div class="drawer-icon">🔌</div></div></div>
+    <div class="drawer"><div class="drawer-toggle"><div class="drawer-icon">🅰</div></div></div>
+    <div class="drawer"><div class="drawer-toggle"><div class="drawer-icon">🌐</div></div></div>
+    <div class="drawer"><div class="drawer-toggle"><div class="drawer-icon">👤</div></div></div>
+    <div class="drawer"><div class="drawer-toggle"><div class="drawer-icon">🖼</div></div></div>
+    <div class="drawer"><div class="drawer-toggle"><div class="drawer-icon">🧩</div></div></div>
+    <div class="drawer"><div class="drawer-toggle"><div class="drawer-icon">😊</div></div></div>
+    <div class="drawer"><div class="drawer-toggle"><div class="drawer-icon">🪄</div></div></div>
+    <!-- CMCC 会插到这里（第 10 个） -->
 </div>
 
 <script type="module">
@@ -194,6 +199,31 @@ function measure() {
         okDisplay: cs.display === 'block',
         okPosition: cs.position === 'absolute',
         openState: isTopPanelOpen(),
+        // ★ 图标错位检测：所有 .drawer 的宽度应彼此接近
+        drawerWidths: [...host.querySelectorAll(':scope > .drawer')]
+            .map(d => Math.round(d.getBoundingClientRect().width)),
+        drawerCount: host.querySelectorAll(':scope > .drawer').length,
+        // 诊断：样式表里到底有没有我们的规则
+        sheetCount: document.styleSheets.length,
+        hasCmccRule: (() => {
+            for (const sh of document.styleSheets) {
+                try {
+                    for (const r of sh.cssRules) {
+                        if (r.selectorText && r.selectorText.includes('cmcc-top-drawer')) return r.cssText.slice(0,120);
+                    }
+                } catch (e) { return 'CORS: ' + e.message.slice(0,40); }
+            }
+            return 'NOT_FOUND';
+        })(),
+        // ★ 诊断：面板里到底有没有内容
+        bodyExists: !!document.getElementById('cmcc-top-panel_body'),
+        bodyChildCount: document.getElementById('cmcc-top-panel_body')?.children.length ?? -1,
+        bodyHeight: Math.round((document.getElementById('cmcc-top-panel_body')?.getBoundingClientRect().height) || 0),
+        bodyHtmlLen: (document.getElementById('cmcc-top-panel_body')?.innerHTML || '').length,
+        bodyHead: (document.getElementById('cmcc-top-panel_body')?.innerHTML || '').slice(0, 120),
+        // ★ 诊断：抽屉在 flex 行里的宽度
+        drawerWidth: Math.round(document.getElementById('cmcc-top-drawer').getBoundingClientRect().width),
+        drawerFlex: getComputedStyle(document.getElementById('cmcc-top-drawer')).flex,
         // 诊断：宽度到底是谁定的
         sheldWidth: getComputedStyle(document.documentElement).getPropertyValue('--sheldWidth').trim(),
         panelCssWidth: cs.width,

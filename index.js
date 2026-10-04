@@ -511,11 +511,23 @@ const api = {
     },
     summarize: (m) => summarize(m),
     currentPos,
-    /** 顶部面板重绘 */
+    /**
+     * 顶部面板重绘
+     * ⚠ 不要在这里吞异常 —— 之前写成 catch(e){} 导致"面板只有标题没内容"
+     *   却看不到任何报错。现在出错会写进 console 并显示在面板里。
+     */
     refreshTop() {
         try {
             renderTopPanel({ ctx: ctx(), api, onGotoSettings: gotoPluginSettings });
-        } catch (e) { /* ignore */ }
+        } catch (e) {
+            console.error(LOG, '顶部面板渲染失败', e);
+            const body = document.getElementById('cmcc-top-panel_body');
+            if (body) {
+                body.innerHTML = '<div class="cmcc-empty" style="color:#ff9b9b">'
+                    + '面板渲染失败：' + String(e && e.message || e)
+                    + '<br><small>详见 F12 控制台</small></div>';
+            }
+        }
     },
 };
 

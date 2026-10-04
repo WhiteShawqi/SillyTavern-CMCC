@@ -236,10 +236,12 @@
     /* 与 ST 其他顶部图标保持一致，无需额外样式 */
 }
 
-#cmcc-top-drawer {
-    /* ST 的 .drawer 是 width:100%，这里不压缩内容 */
-    flex: 0 0 auto;
-}
+/* ⚠ 不要给 #cmcc-top-drawer 加 flex 约束！
+   ST 的 #top-settings-holder 是 display:flex + justify-content:center，
+   而每个 .drawer 都是 width:100% —— 它们靠 **flex 默认的 shrink** 平摊成一排。
+   一旦给我们的 drawer 设了 flex:0 0 auto（禁止收缩），它会独占 100% 宽，
+   图标就会被挤到最右边（实测 drawerWidths: [38,46,...,36,688]）。
+   保持默认的 0 1 auto 即可与其它图标等宽。 */
 
 #cmcc-top-panel {
     /* 不覆盖 display / position / top —— 由 ST 的 .drawer-content 负责。
