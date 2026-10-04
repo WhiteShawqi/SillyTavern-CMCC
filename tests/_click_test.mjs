@@ -21,7 +21,7 @@ class El {
         this.children = [];
         this.parentElement = null;
         this.classList = new CL();
-        this.style = {};
+        this.style = { removeProperty(k) { delete this[k]; }, setProperty(k, v) { this[k] = v; } };
         this._h = 120;
     }
     set className(v) { this.classList = new CL(); String(v || '').split(/\s+/).forEach((c) => c && this.classList.add(c)); }

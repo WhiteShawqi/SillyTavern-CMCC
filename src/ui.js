@@ -65,100 +65,45 @@ export function renderPanel(o) {
     /**
      * 展开 / 收起
      *
-     * 用 JS 测内层高度 + 设 max-height 做过渡：
-     *   · 方向一定正确（展开 max-height 设为实际高度，收起设为 0）
-     *   · 不用猜高度，内容多高都行
-     * 为什么不用纯 CSS 的 grid 0fr/1fr：收起正常，但展开时算不回固有高度。
-     */
-    /** 量内容真实高度（先把 max-height 放开，否则可能量到 0） */
-    function measureInner() {
-        const prev = content.style.maxHeight;
-        content.style.maxHeight = 'none';
-        const h = Math.max(
-            inner.scrollHeight || 0,
-            inner.offsetHeight || 0,
-            content.scrollHeight || 0,
-        );
-        content.style.maxHeight = prev;   // 还原（下一行会立刻重设）
-        return h;
-    }
-
-    /**
-     * 展开 / 收起
+     * ★ 完全照抄 ST 自己的 toggleDrawer（utils.js）：**只切 display**，
+     *   没有任何 max-height / 动画。
      *
-     * ⚠ 踩过的坑：展开时若先把 max-height 设成 0px 再读 inner.scrollHeight，
-     *   容器已被压到 0，量出来还是 0 → 永远展不开（表现为"点了没反应"）。
-     *   所以必须先放开限制再量。另外加最小高度兜底，宁可多留白也不能展不开。
+     * 我在这里连踩三个坑，最后发现全是自找的：
+     *   ① 先用 class 切（displayNone）—— .inline-drawer-content 默认就是
+     *      display:none，切 class 没有任何效果。
+     *   ② 改用 JS 量高度 + max-height 过渡 —— 量的时候容器已被压到 0，
+     *      量出来还是 0，永远展不开（表现为"点了没反应"）。
+     *   ③ 把量高度改成先放开 max-height 再量 —— 还是不行，因为我在 CSS 里
+     *      给 .inline-drawer-content 写了 padding-top:6px，
+     *      而 **max-height 限制的是内容盒子，padding 加在外面** →
+     *      max-height:0 时元素仍有 6px 高，我量到的永远是 6px。
+     *
+     * 诊断数据（用户提供）明确显示：
+     *   内联 max-height = 1157px，但计算 max-height = 0px，实测高度 = 6px
+     *   —— 6px 正是那个 padding。
+     *
+     * 结论：**别自作聪明做动画**。ST 怎么做就怎么做，最稳。
      */
     const applyExpand = (open) => {
         SETTINGS_EXPANDED = open;
         if (open) {
             chev.classList.remove('down', 'fa-circle-chevron-down');
             chev.classList.add('up', 'fa-circle-chevron-up');
+            content.style.removeProperty('max-height');   // 清掉历史遗留
             content.style.display = 'block';
-            if (!content.classList.contains('cmcc-animated')) {
-                // 未启用过渡（首屏 / 恢复状态）：直接放开，不播动画
-                content.style.maxHeight = '';
-                return;
-            }
-            const target = Math.max(60, measureInner() + 8);
-            content.style.maxHeight = '0px';      // 起点
-            void content.offsetHeight;            // 让浏览器认下起点
-            content.style.maxHeight = target + 'px';
-            clearTimeout(content._cmccT);
-            content._cmccT = setTimeout(() => {
-                // 过渡结束后放开限制，免得内容长高了被卡住
-                if (SETTINGS_EXPANDED) content.style.maxHeight = '';
-            }, 300);
         } else {
             chev.classList.remove('up', 'fa-circle-chevron-up');
             chev.classList.add('down', 'fa-circle-chevron-down');
-            if (!content.classList.contains('cmcc-animated')) {
-                content.style.display = 'none';
-                return;
-            }
-            // 收起：先量出当前高度当起点，再压到 0
-            const cs = getComputedStyle(content);
-            const pad = (parseFloat(cs.paddingTop) || 0)
-                      + (parseFloat(cs.paddingBottom) || 0);
-            const h = Math.max(measureInner() + pad, 60);
-            content.style.maxHeight = h + 'px';
-            void content.offsetHeight;
-            content.style.maxHeight = '0px';
+            content.style.removeProperty('max-height');
+            content.style.display = 'none';
         }
     };
     const toggleHandler = () => {
-        // 诊断日志：设置面板点不动时，这几行能直接说明问题出在哪
-        console.log('[CMCC] 设置页标题被点击:',
-            'SETTINGS_EXPANDED =', SETTINGS_EXPANDED,
-            '| display =', JSON.stringify(content.style.display),
-            '| maxHeight =', JSON.stringify(content.style.maxHeight));
-        // 第一次点击才启用过渡，并用内联 display 把当前状态落实（首屏不播动画）
-        if (!content.classList.contains('cmcc-animated')) {
-            content.style.display = 'block';
-            content.style.maxHeight = '';
-            content.classList.add('cmcc-animated');
-            void content.offsetHeight;
-        }
+        console.log('[CMCC] 设置页标题被点击: SETTINGS_EXPANDED =', SETTINGS_EXPANDED);
         applyExpand(!SETTINGS_EXPANDED);
-        console.log('[CMCC] 切换后:',
-            '现在', SETTINGS_EXPANDED ? '展开' : '收起',
+        console.log('[CMCC] 切换后:', SETTINGS_EXPANDED ? '展开' : '收起',
             '| display =', JSON.stringify(content.style.display),
-            '| maxHeight =', JSON.stringify(content.style.maxHeight),
             '| 实测高度 =', Math.round(content.getBoundingClientRect().height));
-
-        // 兜底：展开后若量到高度仍为 0，直接放开限制。
-        // 宁可没有动画，也不能"点了没反应"。
-        if (SETTINGS_EXPANDED) {
-            setTimeout(() => {
-                if (!SETTINGS_EXPANDED) return;
-                if (content.getBoundingClientRect().height < 10) {
-                    content.style.display = 'block';
-                    content.style.maxHeight = '';
-                    console.warn('[CMCC] 设置页展开后高度仍 <10px，已强制放开 max-height');
-                }
-            }, 320);
-        }
     };
     toggle.addEventListener('click', toggleHandler);
 

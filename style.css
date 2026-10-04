@@ -10,8 +10,18 @@
     font-size: 0.95em;
 }
 
-/* 收起后的内容区 */
+/* 内容区
+   ⚠ 这里**不要**给 .inline-drawer-content 加 padding。
+   展开/收起只切 display（照抄 ST 的 toggleDrawer），
+   内边距一律由内层 .cmcc-drawer-inner 承担 ——
+   踩过：写 padding-top:6px 后用 max-height 收起，
+   元素仍残留 6px（max-height 限制内容盒子，padding 加在外面），
+   也干扰过高度测量。 */
 .cmcc-panel .inline-drawer-content {
+    padding: 0;
+}
+
+.cmcc-drawer-inner {
     padding-top: 6px;
 }
 
@@ -541,23 +551,8 @@
 .cmcc-world-head:hover,
 .cmcc-save-head:hover { background: rgba(127 127 127 / 0.08); }
 
-/* ── 设置页抽屉的展开/收起过渡 ──
-   只在用户点过之后才启用（JS 加 .cmcc-animated），首屏不播动画。
 
-   为什么不用 grid-template-rows: 0fr/1fr：
-     试过，收起正常，但**展开时算不回内层的固有高度**
-     （内层被 overflow:hidden + 0fr 压过之后，轨道高度回不到 1fr），
-     实测展开后高度停在 0。
-   改用 JS 测高度 + max-height：方向一定正确，能来回切。 */
-.cmcc-panel .inline-drawer-content.cmcc-animated {
-    overflow: hidden !important;
-    transition: max-height 0.22s ease;
-}
 
-/* 过渡期间由 JS 设 max-height；不设 class 时不要限制 */
-.cmcc-panel .inline-drawer-content.cmcc-animated > .cmcc-drawer-inner {
-    min-height: 0;
-}
 
 /* ══ 多选模式 ══ */
 .cmcc-selbar {
