@@ -47,6 +47,8 @@ export const DEFAULT_SETTINGS = {
     summarizeCooldown: 90,
     /** 换存档/换世界时，让她自然表现出"这是另一次经历" */
     announceSaveSwitch: true,
+    /** 读取 AI 正文里的 `cmcc 记忆块（MVU 式自动记记忆） */
+    readMemoryCommands: true,
     /** 是否同步写一份世界书（便于用 ST 编辑器查看/编辑） */
     syncWorldbook: true,
     /** 调试输出 */

@@ -1,0 +1,196 @@
+/**
+ * CMCC · 记忆指令解析（MVU 式）
+ *
+ * 思路与 MVU 变量一致：
+ *   AI 每次生成正文后，在末尾输出一个 ```cmcc 代码块，
+ *   插件直接读取块里的内容，写进对应世界/存档的记忆。
+ *
+ * 支持的块格式（两种都认，方便 AI 输出也方便手写）：
+ *
+ * ── 格式 1：JSON ──
+ *   ```cmcc
+ *   { "memory": [
+ *       { "scope": "save",   "kind": "event", "text": "在避难所里冻了一夜" },
+ *       { "scope": "shared", "kind": "fact",  "text": "USER 怕冷" }
+ *   ] }
+ *   ```
+ *
+ * ── 格式 2：行式（更省 token，推荐）──
+ *   ```cmcc
+ *   +save|event|在避难所里冻了一夜
+ *   +shared|fact|USER 怕冷
+ *   ```
+ *
+ * scope:  save（当前存档，默认） | world（整个当前世界） | shared（跨越所有世界）
+ * kind:   event | fact | rel | meta | pref   （仅作分类，可省）
+ *
+ * 设计取向：
+ *   · 解析失败**绝不抛错** —— 返回 { entries: [], errors: [...] }，正文照常显示
+ *   · 宽松匹配：代码块语言标记大小写不敏感，也认 memo / memory / CMCC
+ *   · 只读取，不修改正文（ST 的「正则」扩展负责把块从显示里去掉）
+ */
+
+export const BLOCK_LANG = 'cmcc';
+const LANG_RE = /^\s*(cmcc|memo|memory|cmcc_memory)\s*$/i;
+
+/** 一次最多接受多少条（防止模型刷屏把记忆写爆） */
+export const MAX_ENTRIES_PER_BLOCK = 20;
+/** 单条记忆最大长度 */
+export const MAX_TEXT_LEN = 500;
+
+const VALID_SCOPE = new Set(['save', 'world', 'shared']);
+const OP_ADD = new Set(['+', 'add', '', '+save', '+world', '+shared']);
+
+/**
+ * 从一段 AI 正文里抽出所有 cmcc 代码块的内容
+ * @param {string} text
+ * @returns {string[]} 块内文本（不含围栏）
+ */
+export function extractBlocks(text) {
+    if (!text || typeof text !== 'string') return [];
+    const out = [];
+    // ```lang\n ... \n```
+    const re = /```([^\n`]*)\n([\s\S]*?)```/g;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+        if (LANG_RE.test(m[1])) out.push(m[2]);
+    }
+    return out;
+}
+
+/** 去掉正文里的 cmcc 代码块（备用：若用户没装正则） */
+export function stripBlocks(text) {
+    if (!text || typeof text !== 'string') return text;
+    return text.replace(/```([^\n`]*)\n[\s\S]*?```/g, (whole, lang) =>
+        (LANG_RE.test(lang) ? '' : whole)).replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/** 单条记忆的规范化 */
+function normalizeEntry(raw) {
+    if (!raw) return null;
+    let scope = String(raw.scope || 'save').trim().toLowerCase();
+    if (!VALID_SCOPE.has(scope)) scope = 'save';
+    let kind = String(raw.kind || '').trim().toLowerCase();
+    if (kind && !/^[a-z_]{1,16}$/.test(kind)) kind = '';
+    let text = String(raw.text == null ? '' : raw.text).trim();
+    if (!text) return null;
+    if (text.length > MAX_TEXT_LEN) text = text.slice(0, MAX_TEXT_LEN) + '…';
+    return { scope, kind, text };
+}
+
+/**
+ * 解析一个块的内容 → 记忆条目数组
+ * 先试 JSON，不行再试行式。
+ */
+export function parseBlock(content) {
+    const errors = [];
+    const entries = [];
+    const body = String(content || '').trim();
+    if (!body) return { entries, errors };
+
+    // ── 试 JSON ──
+    const jsonText = body.replace(/^[^{\[]*/, '').trim();
+    if (jsonText.startsWith('{') || jsonText.startsWith('[')) {
+        let obj = null;
+        try {
+            obj = JSON.parse(jsonText);
+        } catch (e) {
+            errors.push('JSON 解析失败：' + e.message);
+            // 看起来是 JSON 但坏了 —— 不再回落到行式，
+            // 否则会把整段 JSON 原文当成一条记忆存进去
+            return { entries, errors };
+        }
+        const arr = Array.isArray(obj) ? obj
+            : Array.isArray(obj?.memory) ? obj.memory
+                : Array.isArray(obj?.memories) ? obj.memories
+                    : null;
+        if (!arr) {
+            // 同样是「像 JSON 但没有 memory」→ 干净返回空
+            errors.push('JSON 里没有 memory 数组');
+            return { entries, errors };
+        }
+        for (const it of arr.slice(0, MAX_ENTRIES_PER_BLOCK)) {
+            const e = normalizeEntry(typeof it === 'string' ? { text: it } : it);
+            if (e) entries.push(e);
+        }
+        return { entries, errors };
+    }
+
+    // ── 行式 ──
+    for (const rawLine of body.split('\n')) {
+        const line = rawLine.trim();
+        if (!line || line.startsWith('#') || line.startsWith('//')) continue;
+        // 允许前置 "+" 或 "-"（忽略），然后 scope|kind|text
+        let s = line;
+        if (s.startsWith('+')) s = s.slice(1);
+        else if (s.startsWith('-')) s = s.slice(1);
+
+        const parts = s.split('|');
+        if (parts.length >= 3) {
+            const e = normalizeEntry({ scope: parts[0], kind: parts[1], text: parts.slice(2).join('|') });
+            if (e) entries.push(e);
+            else errors.push('条目缺 text：' + line.slice(0, 40));
+        } else if (parts.length === 2) {
+            // 可能是 scope|text 或 kind|text：第一个词若是 scope 就当 scope
+            const p0 = parts[0].trim().toLowerCase();
+            const e = VALID_SCOPE.has(p0)
+                ? normalizeEntry({ scope: p0, text: parts[1] })
+                : normalizeEntry({ kind: p0, text: parts[1] });
+            if (e) entries.push(e);
+            else errors.push('条目缺 text：' + line.slice(0, 40));
+        } else {
+            // 只有一段：当作当前存档的一条记忆
+            const e = normalizeEntry({ scope: 'save', text: s });
+            if (e) entries.push(e);
+        }
+        if (entries.length >= MAX_ENTRIES_PER_BLOCK) break;
+    }
+
+    return { entries, errors };
+}
+
+/**
+ * 从整段 AI 回复里解析出所有记忆指令
+ * @param {string} text AI 回复全文
+ * @returns {{entries: Array, errors: string[], blockCount: number}}
+ */
+export function parseMemoryCommands(text) {
+    const blocks = extractBlocks(text);
+    const entries = [];
+    const errors = [];
+    for (const b of blocks) {
+        const r = parseBlock(b);
+        entries.push(...r.entries);
+        errors.push(...r.errors);
+    }
+    // 全局上限
+    if (entries.length > MAX_ENTRIES_PER_BLOCK) {
+        errors.push(`一次输出 ${entries.length} 条，只取前 ${MAX_ENTRIES_PER_BLOCK} 条`);
+        entries.length = MAX_ENTRIES_PER_BLOCK;
+    }
+    return { entries, errors, blockCount: blocks.length };
+}
+
+/** 给 prompt 用的格式说明（拼进引导文本） */
+export function commandSpec() {
+    return [
+        '【每次生成正文后，在最后追加一个记忆块】',
+        '',
+        '格式（严格照抄，用三个反引号包住，语言标记写 cmcc）：',
+        '',
+        '```cmcc',
+        '+save|event|这一节里真正发生、你希望记住的事',
+        '+world|fact|关于这个世界、以后还用得上的设定',
+        '+shared|rel|跨越所有世界都成立的事（比如你和 {user} 的关系）',
+        '```',
+        '',
+        '规则：',
+        '- 只在**确实有值得记的事**时才输出这个块；没有就不输出（不要硬凑）。',
+        '- 每行一条，格式 `+范围|类型|内容`。',
+        '- 范围三选一：`save`＝只属于当前这一次；`world`＝整个当前世界通用；`shared`＝所有世界通用。',
+        '- 类型随便填一个短词（event / fact / rel / pref），只作分类。',
+        '- 内容写成**你自己的一句话**，不要写"用户说""AI 认为"。',
+        '- 一次最多 5 条，只写重要的，不要复述整段剧情。',
+        '- 这个块是给你自己留的备忘，正文里**不要提到它**。',
+    ].join('\n');
+}

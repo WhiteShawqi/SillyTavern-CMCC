@@ -221,6 +221,14 @@ export function renderPanel(o) {
         refresh();
     };
     actRow.appendChild(bNew);
+    const bClean = el('button', 'menu_button', '清理空存档');
+    bClean.title = '删掉没有任何记忆的空存档/空世界';
+    bClean.onclick = async () => {
+        const r = await api.cleanEmpty();
+        ctx.toastr?.success?.('清理了 ' + r.saves + ' 个空存档 / ' + r.worlds + ' 个空世界');
+        refresh();
+    };
+    actRow.appendChild(bClean);
     sec1.appendChild(actRow);
     content.appendChild(sec1);
 
@@ -241,6 +249,8 @@ export function renderPanel(o) {
     };
     opts.appendChild(mkCheck('存档切换提示', 'announceSaveSwitch',
         '换世界/换存档时，让她自然表现出"这是另一次经历"'));
+    opts.appendChild(mkCheck('读取正文记忆块', 'readMemoryCommands',
+        'AI 生成正文后，读它输出 `cmcc 块里的内容自动记进记忆（MVU 式）'));
     opts.appendChild(mkCheck('注入记忆', 'injectMemory',
         '把记忆直接注入提示词（关掉就只靠世界书，需要手动挂载）'));
     opts.appendChild(mkCheck('同步世界书', 'syncWorldbook',
@@ -332,7 +342,9 @@ export function renderPanel(o) {
                 + `<div class="cmcc-saves">${saves}${w.saves.length > 4 ? ' …' : ''}</div></div>`);
         }
         if (s.worlds.length > 8) rows.push(`… 还有 ${s.worlds.length - 8} 个世界`);
-        if (!s.worldCount) rows.push('<span class="cmcc-hint">还没有记忆。选好角色卡后去玩任意一张卡。</span>');
+        if (!s.worldCount) rows.push('<span class="cmcc-hint">'
+            + '<b>记忆是空的</b> —— 这是正常的，默认只有人设。<br>'
+            + '开始玩之后，她会把值得记的事自动记下来（读正文里的 <code>cmcc</code> 块）。</span>');
         rows.push('<span class="cmcc-hint">改人设 / 改记忆：点「打开顶部面板」，'
             + '或用酒馆顶部那个人形图标。</span>');
         stats.innerHTML = rows.map((x) => `<div class="cmcc-stat-line">${x}</div>`).join('');

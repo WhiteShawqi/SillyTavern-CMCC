@@ -38,6 +38,11 @@ const {
     buildRules, buildWhereBlock, buildMemoryBlock, buildInjectionText, TAG,
 } = await import('../src/inject.js');
 
+const {
+    extractBlocks, stripBlocks, parseBlock, parseMemoryCommands, commandSpec,
+    BLOCK_LANG, MAX_ENTRIES_PER_BLOCK, MAX_TEXT_LEN,
+} = await import('../src/memo.js');
+
 let pass = 0, fail = 0;
 const ok = (m) => { pass++; console.log('  ✓ ' + m); };
 const bad = (m) => { fail++; console.log('  ❌ ' + m); };
@@ -356,6 +361,101 @@ chk(!!norm.builtin && norm.builtin.name === '同伴', '补齐 builtin 字段');
 chk(norm.companionAvatar === 'x.png', '保留原有设置');
 chk(norm.injectMemory === true, '补齐 injectMemory');
 chk(norm.memoryBudget === 1800, '补齐 memoryBudget');
+
+
+// ── 14. MVU 式记忆块解析 ──
+console.log('【14】记忆块解析');
+const fenced = '正文写完了。\n\n```' + BLOCK_LANG + '\n+save|event|在避难所里冻了一夜\n+shared|fact|USER 怕冷\n```\n';
+const bl = extractBlocks(fenced);
+chk(bl.length === 1, '抽出一个 cmcc 代码块');
+chk(bl[0].includes('避难所'), '块内容正确');
+
+// 语言标记大小写/别名
+chk(extractBlocks('x\n```CMCC\n+save|a|b\n```').length === 1, '语言标记大小写不敏感');
+chk(extractBlocks('x\n```memo\n+save|a|b\n```').length === 1, '认 memo 别名');
+chk(extractBlocks('x\n```js\nvar a=1;\n```').length === 0, '★ 不误吃普通代码块');
+chk(extractBlocks('没有代码块').length === 0, '无块返回空');
+chk(extractBlocks('').length === 0, '空串安全');
+chk(extractBlocks(null).length === 0, 'null 安全');
+
+// 行式
+const r1 = parseBlock('+save|event|找到一箱罐头');
+chk(r1.entries.length === 1, '行式：1 条');
+chk(r1.entries[0].scope === 'save', '行式：scope 正确');
+chk(r1.entries[0].kind === 'event', '行式：kind 正确');
+chk(r1.entries[0].text === '找到一箱罐头', '行式：text 正确');
+
+const r2 = parseBlock('+world|fact|这世界有一种黑石\n+shared|rel|她一直跟着你');
+chk(r2.entries.length === 2, '行式：多行');
+chk(r2.entries[1].scope === 'shared', '行式：第二条 scope 正确');
+
+chk(parseBlock('+save|只有两段').entries[0].scope === 'save', '两段按 save 处理');
+chk(parseBlock('+save|只有两段').entries[0].text === '只有两段', '两段：text 取第二段');
+chk(parseBlock('就一段话').entries[0].text === '就一段话', '★ 单段也认（按 save）');
+chk(parseBlock('就一段话').entries[0].scope === 'save', '单段默认 save');
+
+// 非法/边界
+chk(parseBlock('+bad|event|内容').entries[0].scope === 'save', '★ 非法 scope 回落 save');
+chk(parseBlock('# 注释\n// 也是注释\n+save|a|真的').entries.length === 1, '跳过注释行');
+chk(parseBlock('').entries.length === 0, '空块无条目');
+chk(parseBlock('   \n  ').entries.length === 0, '空白块无条目');
+chk(parseBlock('+save|event|').entries.length === 0, '空 text 被丢弃');
+chk(parseBlock('-save|event|减号也认').entries[0].text === '减号也认', '前缀 - 也接受');
+
+const longText = '+save|event|' + 'x'.repeat(MAX_TEXT_LEN + 200);
+chk(parseBlock(longText).entries[0].text.length <= MAX_TEXT_LEN + 1, '★ 超长 text 被截断');
+
+const many = Array.from({ length: 50 }, (_, i) => '+save|e|第' + i).join('\n');
+chk(parseBlock(many).entries.length === MAX_ENTRIES_PER_BLOCK, '★ 单块条数上限生效');
+
+// JSON 格式
+const j1 = parseBlock('{"memory":[{"scope":"world","kind":"fact","text":"黑石"}]}');
+chk(j1.entries.length === 1, 'JSON：1 条');
+chk(j1.entries[0].scope === 'world', 'JSON：scope 正确');
+chk(j1.entries[0].text === '黑石', 'JSON：text 正确');
+chk(parseBlock('[{"text":"裸数组"}]').entries[0].text === '裸数组', 'JSON：裸数组也认');
+chk(parseBlock('{"memory":["纯字符串"]}').entries[0].text === '纯字符串', 'JSON：字符串条目');
+chk(parseBlock('{"别的":1}').entries.length === 0, '★ JSON 无 memory 字段 → 无条目');
+chk(parseBlock('{坏 json').entries.length >= 0, '★ 坏 JSON 不抛错');
+
+// 整段回复
+const full = '她看着你。\n\n```cmcc\n+save|event|一起守了半夜的火堆\n```\n';
+const pm = parseMemoryCommands(full);
+chk(pm.blockCount === 1, '整段：1 个块');
+chk(pm.entries.length === 1, '整段：1 条记忆');
+chk(pm.entries[0].text === '一起守了半夜的火堆', '整段：内容正确');
+chk(parseMemoryCommands('没有块的普通正文').blockCount === 0, '整段：无块');
+chk(parseMemoryCommands('').entries.length === 0, '整段：空串安全');
+
+// 多个块
+const two = '```cmcc\n+save|e|A\n```\n中间正文\n```cmcc\n+shared|f|B\n```';
+chk(parseMemoryCommands(two).blockCount === 2, '整段：认出两个块');
+chk(parseMemoryCommands(two).entries.length === 2, '整段：两块合并');
+
+// stripBlocks
+const stripped = stripBlocks(full);
+chk(!stripped.includes('cmcc'), '★ stripBlocks 去掉记忆块');
+chk(stripped.includes('她看着你'), 'stripBlocks 保留正文');
+chk(stripBlocks('a\n```js\nvar x=1;\n`\nb').includes('var x=1;'), 'stripBlocks 不动普通代码块');
+
+// commandSpec
+const spec = commandSpec();
+chk(spec.includes('cmcc'), '格式说明含 cmcc');
+chk(spec.includes('+save|'), '★ 格式说明给了行式示例');
+chk(spec.includes('shared'), '格式说明提到 shared');
+chk(spec.includes('最多 5 条'), '格式说明有数量约束');
+console.log('');
+
+// ── 15. 空存档不该被自动创建 ──
+console.log('【15】按需创建（默认空的）');
+const fresh = emptyWorld('测试世界');
+chk(Object.keys(fresh.saves).length === 0, '★ 新世界默认没有任何存档');
+chk(bookStats({}).worldCount === 0, '★ 空记忆模型 → 0 个世界');
+chk(bookStats({}).totalEntries === 0, '★ 空记忆模型 → 0 条记忆');
+const afterAdd = emptyWorld('测试世界');
+ensureSave(afterAdd, 's1', '存档1');
+chk(Object.keys(afterAdd.saves).length === 1, '写入时才创建存档');
+chk(worldStats(afterAdd).count === 0, '★ 刚创建的存档是空的（0 条）');
 
 console.log(fail === 0 ? `✓ 全部通过 (${pass} 项)` : `❌ 失败 ${fail} 项 / 共 ${pass + fail} 项`);
 process.exit(fail ? 1 : 0);

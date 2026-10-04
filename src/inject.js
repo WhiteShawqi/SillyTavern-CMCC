@@ -92,16 +92,19 @@ export function buildRules(hasSaveSwitch, withMemory = true) {
  * @param {object} o.settings
  * @param {boolean} o.saveSwitched
  */
-export function buildGuide({ companion, wLabel, saveLabel, saveCount, otherSaveLabels, settings, saveSwitched }) {
+export function buildGuide({
+    companion, wLabel, saveLabel, saveCount, otherSaveLabels, settings, saveSwitched, memoSpec,
+}) {
     if (!companion) return '';
     const budget = Math.max(200, settings.tokenBudget || 600);
     const parts = [
         buildIdentity(companion),
         buildWhereBlock({ wLabel, saveLabel, saveCount, otherSaveLabels }),
         buildRules(saveSwitched && settings.announceSaveSwitch),
+        memoSpec || '',
     ].filter((x) => x && x.trim());
 
-    // 预算保护：规则段是核心，身份段若过长则裁掉 description 的尾部
+    // 预算保护：规则段与记忆块说明是核心，身份段若过长则裁掉 description 的尾部
     let text = parts.join('\n\n');
     if (estimateTokens(text) > budget && parts[0]) {
         const over = estimateTokens(text) - budget;
