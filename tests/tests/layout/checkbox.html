@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>CMCC 勾选框浏览器验证</title>
+<!--
+  验证多选模式下的勾选框是否**真的看得见**（实心、有勾、有半选）。
+
+  为什么要单独一页：勾选框的可见性问题（"没有正常显示勾选"）
+  在 Node 假 DOM 里完全测不出来 —— 那里不做布局也不执行 CSS。
+
+  用法：node tests/layout/run.mjs  或
+        node tools/shot.mjs http://127.0.0.1:8899/checkbox.html --title
+  结果：CMCC_CHECKBOX={...}
+-->
+<style>
+/* ── 复刻 ST 的勾选框样式（这是关键，之前就是和它打架才画不出勾）── */
+:root {
+    --SmartThemeBorderColor: #4a4f57;
+    --SmartThemeBodyColor: #e6e6e6;
+    --SmartThemeShadowColor: rgba(0, 0, 0, 0.5);
+    --SmartThemeCheckboxTickColor: #1b1e24;
+    --grey5020a: rgba(128, 128, 128, 0.2);
+    --mainFontSize: 15px;
+    --animation-duration: 0.2s;
+}
+body {
+    margin: 0; padding: 14px;
+    background: #0d0f12; color: #e6e6e6;
+    font-family: 'Microsoft YaHei', sans-serif;
+    font-size: var(--mainFontSize);
+}
+input[type='checkbox'] {
+    -webkit-appearance: none;
+    appearance: none;
+    outline: 1px solid var(--grey5020a);
+    position: relative;
+    width: var(--mainFontSize);
+    height: var(--mainFontSize);
+    overflow: hidden;
+    border-radius: 3px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    background-color: var(--SmartThemeBodyColor);
+    box-shadow: inset 0 0 2px 0 var(--SmartThemeShadowColor);
+    cursor: pointer;
+    display: grid;
+    place-content: center;
+    flex-shrink: 0;
+}
+input[type='checkbox']::before {
+    content: "";
+    width: 0.65em;
+    height: 0.65em;
+    transform: scale(0);
+    box-shadow: inset 1em 1em var(--SmartThemeCheckboxTickColor);
+    transform-origin: bottom left;
+    clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+}
+input[type='checkbox']:checked::before { transform: scale(1); }
+
+/* 行/标题的排版，用来模拟真实列表里的位置 */
+.row {
+    display: flex; align-items: center; gap: 6px;
+    padding: 5px 8px; margin: 3px 0;
+    border-radius: 5px;
+    background: rgba(127 127 127 / 0.07);
+    border-left: 2px solid rgba(122 162 247 / 0.35);
+}
+.row.lv1 { margin-left: 0; font-weight: bold; }
+.row.lv2 { margin-left: 18px; }
+.row.lv3 { margin-left: 36px; }
+.picked { background: rgba(122 162 247 / 0.18); }
+</style>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+<div id="cmcc-top-panel">
+  <div class="cmcc-top-section">
+    <div id="stage"></div>
+  </div>
+</div>
+
+<script type="module">
+const result = { ok: false, errors: [] };
+const cb = (extra = '') => {
+    const i = document.createElement('input');
+    i.type = 'checkbox';
+    i.className = 'cmcc-check ' + extra;
+    return i;
+};
+
+// 造出三种状态，模拟多选列表
+const stage = document.getElementById('stage');
+stage.innerHTML = '';
+
+function mkRow(cls, label, box) {
+    const d = document.createElement('div');
+    d.className = 'row ' + cls;
+    d.appendChild(box);
+    const t = document.createElement('span');
+    t.textContent = label;
+    d.appendChild(t);
+    stage.appendChild(d);
+    return d;
+}
+
+// L1：全选（有勾）
+const c1 = cb('cmcc-world-check');
+c1.checked = true;
+mkRow('lv1', '世界 · 全选', c1);
+
+// L2：半选
+const c2 = cb('cmcc-save-check');
+c2.indeterminate = true;
+mkRow('lv2', '存档 · 半选', c2);
+
+// L3：未选 / 已选
+const c3 = cb();
+mkRow('lv3', '记忆 · 未选', c3);
+const c4 = cb();
+c4.checked = true;
+mkRow('lv3 picked', '记忆 · 已选', c4);
+
+await new Promise((r) => setTimeout(r, 60));
+
+// ── 测量 ──
+function probe(input, tag) {
+    const cs = getComputedStyle(input);
+    const before = getComputedStyle(input, '::before');
+    const after = getComputedStyle(input, '::after');
+    const r = input.getBoundingClientRect();
+    return {
+        tag,
+        w: Math.round(r.width), h: Math.round(r.height),
+        visible: r.width > 4 && r.height > 4,
+        display: cs.display,
+        // ST 用 place-content:center + ::before 画勾
+        placeContent: cs.placeContent || cs.justifyContent,
+        beforeContent: before.content,
+        beforeTransform: before.transform,
+        beforeClip: (before.clipPath || '').slice(0, 20),
+        afterContent: after.content,
+        // 勾的颜色必须和底色不同，否则看不见
+        bg: cs.backgroundColor,
+        tickShadow: (before.boxShadow || '').slice(0, 60),
+        checked: input.checked,
+        indeterminate: input.indeterminate,
+    };
+}
+
+const p1 = probe(c1, 'L1 全选');
+const p2 = probe(c2, 'L2 半选');
+const p3 = probe(c3, 'L3 未选');
+const p4 = probe(c4, 'L3 已选');
+result.probes = [p1, p2, p3, p4];
+
+// 断言
+result.allVisible = [p1, p2, p3, p4].every((p) => p.visible);
+result.usesGrid = p1.display === 'grid';
+// 已选：勾要真的被放大（scale 不为 0）
+const scaleOf = (t) => {
+    const m = String(t).match(/matrix\(([-\d.]+)/);
+    return m ? parseFloat(m[1]) : (t === 'none' ? 1 : 0);
+};
+result.checkedTickVisible = scaleOf(p1.beforeTransform) > 0.9;
+result.uncheckedTickHidden = scaleOf(p3.beforeTransform) < 0.1;
+// 半选：必须有自己的标记，且不能和"全选"一样
+result.indeterminateMarked = p2.afterContent !== 'none' && p2.afterContent !== 'normal'
+    || p2.indeterminate === true;
+// 半选不能是"空框"，也不能是"全选的样子"
+result.indeterminateDiffersFromChecked =
+    !(scaleOf(p2.beforeTransform) > 0.9 && p2.afterContent === 'none');
+// 勾的颜色必须和底色不同（都是浅色就是看不见）
+result.tickContrast = p1.bg !== 'rgb(27, 30, 36)' || p1.tickShadow.includes('27, 30, 36');
+
+result.ok = result.errors.length === 0
+    && result.allVisible && result.usesGrid
+    && result.checkedTickVisible && result.uncheckedTickHidden
+    && result.indeterminateDiffersFromChecked;
+
+document.title = 'CMCC_CHECKBOX=' + JSON.stringify(result);
+try { console.log(document.title); } catch (e) {}
+
+const pre = document.createElement('pre');
+pre.id = 'cmcc_result';
+pre.style.cssText = 'margin-top:12px;padding:8px;background:#111;color:#9f9;font-size:12px;'
+    + 'white-space:pre-wrap;border-radius:4px';
+pre.textContent = '结果: ' + (result.ok ? '全部通过 ✓' : '有失败 ✗') + '\n'
+    + JSON.stringify(result, null, 2);
+document.body.appendChild(pre);
+</script>
+</body>
+</html>

@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>CMCC 顶部面板浏览器验证</title>
+<!--
+  浏览器验证页（真实布局 + 真实 CSS）—— 顶部入口
+  用法：node tests/layout/sync.mjs 然后 node tests/layout/run.mjs
+  结果写在 document.title，格式 CMCC_TOPBAR={...}
+-->
+<style>
+/* 最小复刻 ST 顶部设置栏的几何规则（不是完整 style.css） */
+:root {
+    --sheldWidth: 820px;
+    --topBarBlockSize: 38px;
+    --SmartThemeBlurTintColor: rgba(20, 22, 26, 0.94);
+    --SmartThemeBodyColor: #e6e6e6;
+    --SmartThemeBorderColor: #4a4f57;
+    --mainFontSize: 15px;
+}
+body {
+    margin: 0;
+    background: #0d0f12;
+    color: #e6e6e6;
+    font-family: 'Microsoft YaHei', sans-serif;
+    font-size: var(--mainFontSize);
+}
+#top-settings-holder {
+    display: flex;
+    justify-content: center;
+    width: var(--sheldWidth);
+    margin: 0 auto;
+    align-items: flex-start;
+}
+.drawer { width: 100%; position: relative; }
+.drawer-icon {
+    display: flex; align-items: center; justify-content: center;
+    width: 100%; height: var(--topBarBlockSize);
+    cursor: pointer; font-size: 18px;
+}
+.drawer-content {
+    display: none;
+    position: absolute;
+    top: var(--topBarBlockSize);
+    left: 0; right: 0;
+    width: var(--sheldWidth);
+    box-sizing: border-box;
+    background: var(--SmartThemeBlurTintColor);
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 8px;
+    padding: 10px;
+    z-index: 30000;
+}
+.drawer-content.openDrawer { display: block; }
+.text_pole {
+    background: #1b1e24; color: inherit; border: 1px solid #3a3f47;
+    border-radius: 4px; padding: 4px 6px; font: inherit; width: 100%; box-sizing: border-box;
+}
+.menu_button {
+    background: #232830; color: inherit; border: 1px solid #3a3f47;
+    border-radius: 4px; padding: 4px 10px; cursor: pointer; font: inherit;
+}
+</style>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+<div id="top-settings-holder">
+    <!-- 复刻几个别的抽屉，用来验证我们的图标不会把别人挤歪 -->
+    <div class="drawer" id="d1"><div class="drawer-icon">1</div></div>
+    <div class="drawer" id="d2"><div class="drawer-icon">2</div></div>
+    <div class="drawer" id="d3"><div class="drawer-icon">3</div></div>
+    <!-- CMCC 的入口由 mountTopDrawer 插进来 -->
+    <div class="drawer" id="d5"><div class="drawer-icon">5</div></div>
+</div>
+
+<script type="module">
+import { mountTopDrawer, renderTopPanel } from './topbar.js';
+
+const errors = [];
+const noop = () => {};
+
+const ctx = {
+    characters: [{ name: '小满', avatar: 'x.png' }],
+    callGenericPopup: async () => null,
+    POPUP_TYPE: { INPUT: 1, CONFIRM: 2, TEXT: 3 },
+    toastr: { info: noop, success: noop, warning: noop, error: noop },
+    powerUserSettings: {},
+};
+
+const api = {
+    snapshot: () => ({
+        bookName: 'CMCC-记忆库',
+        personaMode: 'builtin',
+        companionName: '小满',
+        hasCompanion: true,
+        injectMemory: true,
+        builtin: { name: '小满', description: '灰发少女', personality: '话少', scenario: '同伴' },
+        stats: { worldCount: 1, totalEntries: 3, sharedCount: 0, worlds: [
+            { key: 'w1', label: '世界A', saveCount: 2, count: 3,
+              saves: [{ key: 's1', label: '存档1', count: 2 },
+                      { key: 's2', label: '存档2', count: 1 }] },
+        ] },
+        shared: [],
+        worlds: {
+            w1: { label: '世界A', saves: {
+                s1: { label: '存档1', entries: [{ text: '一件事' }, { text: '两件事' }] },
+                s2: { label: '存档2', entries: [{ text: '三件事' }] },
+            } },
+        },
+    }),
+    currentPos: () => ({ wKey: 'w1', sKey: 's1', wLabel: '世界A' }),
+    summarize: noop, reload: async () => {}, addMemory: async () => {},
+    addShared: async () => {}, editShared: async () => {}, deleteShared: async () => {},
+    editMemory: async () => {}, deleteMemory: async () => {},
+    deleteMemories: async () => 0, deleteSave: async () => {},
+    renameSave: async () => {}, renameWorld: async () => {},
+    editPersona: async () => {}, cleanEmpty: async () => ({ saves: 0, worlds: 0 }),
+    deleteByScope: async () => ({ deleted: 0, what: '' }),
+    refreshTop: noop,
+};
+
+const result = { errors, ok: false };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+try {
+    mountTopDrawer();
+} catch (e) {
+    errors.push('mountTopDrawer 抛错: ' + (e && e.message));
+}
+
+try {
+    const drawer = document.getElementById('cmcc-top-drawer');
+    const panel = document.getElementById('cmcc-top-panel');
+    const body = document.getElementById('cmcc-top-panel_body');
+
+    result.drawerExists = !!drawer;
+    result.panelExists = !!panel;
+    result.bodyExists = !!body;
+
+    // 打开面板
+    if (drawer) {
+        const icon = drawer.querySelector('.drawer-icon');
+        if (icon) icon.click();
+    }
+    await sleep(120);
+
+    renderTopPanel({ ctx, api, onGotoSettings: noop });
+    await sleep(120);
+
+    const body2 = document.getElementById('cmcc-top-panel_body');
+    result.bodyChildren = body2 ? body2.children.length : 0;
+
+    // 图标栏宽度：我们自己的抽屉不能把别人挤歪
+    const holders = [...document.querySelectorAll('#top-settings-holder > .drawer')];
+    const widths = holders.map((h) => Math.round(h.getBoundingClientRect().width));
+    result.drawerWidths = widths;
+    result.widthsBalanced = (Math.max(...widths) - Math.min(...widths)) <= 6;
+
+    // 面板不能被压成竖排字：宽度要够
+    if (panel) {
+        const pr = panel.getBoundingClientRect();
+        result.panelWidth = Math.round(pr.width);
+        result.panelLeft = Math.round(pr.left);
+        result.panelPosition = getComputedStyle(panel).position;
+        result.panelWideEnough = pr.width >= 380;
+    }
+
+    // 记忆树是否渲染出三级
+    result.hasWorldRow = !!document.querySelector('.cmcc-world');
+    result.hasSaveRow = !!document.querySelector('.cmcc-save');
+    result.hasEntryRow = !!document.querySelector('.cmcc-entry');
+    result.hasAddRow = !!document.querySelector('.cmcc-add');
+    result.hasWhoRow = !!document.querySelector('.cmcc-top-who');
+
+    result.ok = errors.length === 0
+        && result.drawerExists && result.panelExists && result.bodyChildren > 0
+        && result.widthsBalanced && result.panelWideEnough
+        && result.hasWorldRow && result.hasSaveRow && result.hasEntryRow;
+} catch (e) {
+    errors.push('检查过程抛错: ' + (e && e.message));
+}
+
+document.title = 'CMCC_TOPBAR=' + JSON.stringify(result);
+try { console.log(document.title); } catch (e) {}
+
+const pre = document.createElement('pre');
+pre.id = 'cmcc_result';
+pre.style.cssText = 'margin:12px;padding:8px;background:#111;color:#9f9;font-size:12px;'
+    + 'white-space:pre-wrap;border-radius:4px';
+pre.textContent = '结果: ' + (result.ok ? '全部通过 ✓' : '有失败 ✗') + '\n'
+    + JSON.stringify(result, null, 2);
+document.body.appendChild(pre);
+</script>
+</body>
+</html>

@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>CMCC 多选勾选浏览器验证</title>
+<!--
+  在**真实 renderTopPanel** 里验证多选勾选：
+    · 进多选后，三级是否都出现勾选框
+    · 点世界 → 下面存档和记忆的框是否跟着变成勾上
+    · 点记忆 → 世界/存档框是否变成半选
+  这些在 Node 假 DOM 里测过逻辑（_cascade_test），
+  这里测的是**真的渲染出来、真的看得见**。
+
+  用法：node tests/layout/run.mjs
+  结果：CMCC_MULTISEL={...}
+-->
+<style>
+:root {
+    --sheldWidth: 820px;
+    --topBarBlockSize: 38px;
+    --SmartThemeBlurTintColor: rgba(20, 22, 26, 0.94);
+    --SmartThemeBodyColor: #e6e6e6;
+    --SmartThemeBorderColor: #4a4f57;
+    --SmartThemeShadowColor: rgba(0, 0, 0, 0.5);
+    --SmartThemeCheckboxTickColor: #1b1e24;
+    --grey5020a: rgba(128, 128, 128, 0.2);
+    --mainFontSize: 15px;
+    --animation-duration: 0.2s;
+}
+body {
+    margin: 0; background: #0d0f12; color: #e6e6e6;
+    font-family: 'Microsoft YaHei', sans-serif; font-size: var(--mainFontSize);
+}
+#top-settings-holder {
+    display: flex; justify-content: center;
+    width: var(--sheldWidth); margin: 0 auto; align-items: flex-start;
+}
+.drawer { width: 100%; position: relative; }
+.drawer-icon {
+    display: flex; align-items: center; justify-content: center;
+    width: 100%; height: var(--topBarBlockSize); cursor: pointer;
+}
+.drawer-content {
+    display: none; position: absolute; top: var(--topBarBlockSize);
+    left: 0; right: 0; width: var(--sheldWidth); box-sizing: border-box;
+    background: var(--SmartThemeBlurTintColor);
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 8px; padding: 10px; z-index: 30000;
+}
+.drawer-content.openDrawer { display: block; }
+/* ★ 复刻 ST 的勾选框样式 —— 必须和真实环境一致才测得出问题 */
+input[type='checkbox'] {
+    -webkit-appearance: none; appearance: none;
+    outline: 1px solid var(--grey5020a);
+    position: relative;
+    width: var(--mainFontSize); height: var(--mainFontSize);
+    overflow: hidden; border-radius: 3px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    background-color: var(--SmartThemeBodyColor);
+    box-shadow: inset 0 0 2px 0 var(--SmartThemeShadowColor);
+    cursor: pointer; display: grid; place-content: center; flex-shrink: 0;
+}
+input[type='checkbox']::before {
+    content: ""; width: 0.65em; height: 0.65em;
+    transform: scale(0); box-shadow: inset 1em 1em var(--SmartThemeCheckboxTickColor);
+    transform-origin: bottom left;
+    clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+}
+input[type='checkbox']:checked::before { transform: scale(1); }
+.text_pole {
+    background: #1b1e24; color: inherit; border: 1px solid #3a3f47;
+    border-radius: 4px; padding: 4px 6px; font: inherit; width: 100%; box-sizing: border-box;
+}
+.menu_button {
+    background: #232830; color: inherit; border: 1px solid #3a3f47;
+    border-radius: 4px; padding: 4px 10px; cursor: pointer; font: inherit;
+}
+</style>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+<div id="top-settings-holder">
+    <div class="drawer" id="d1"><div class="drawer-icon">1</div></div>
+    <div class="drawer" id="d5"><div class="drawer-icon">5</div></div>
+</div>
+
+<script type="module">
+import { mountTopDrawer, renderTopPanel, __selTestHook } from './topbar.js';
+
+const errors = [];
+const noop = () => {};
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+const ctx = {
+    characters: [{ name: '小满', avatar: 'x.png' }],
+    callGenericPopup: async () => null,
+    POPUP_TYPE: { INPUT: 1, CONFIRM: 2, TEXT: 3 },
+    toastr: { info: noop, success: noop, warning: noop, error: noop },
+    powerUserSettings: {},
+};
+
+// 一个世界 / 两个存档 / 共 3 条记忆
+const WORLDS = {
+    w1: { label: '世界A', saves: {
+        s1: { label: '存档1', entries: [{ text: '第一条' }, { text: '第二条' }] },
+        s2: { label: '存档2', entries: [{ text: '第三条' }] },
+    } },
+};
+
+const api = {
+    snapshot: () => ({
+        bookName: 'CMCC-记忆库', personaMode: 'builtin', companionName: '小满',
+        hasCompanion: true, injectMemory: true,
+        builtin: { name: '小满', description: '灰发', personality: '话少', scenario: '同伴' },
+        stats: { worldCount: 1, totalEntries: 3, sharedCount: 0, worlds: [
+            { key: 'w1', label: '世界A', saveCount: 2, count: 3,
+              saves: [{ key: 's1', label: '存档1', count: 2 },
+                      { key: 's2', label: '存档2', count: 1 }] },
+        ] },
+        shared: [], worlds: WORLDS,
+    }),
+    currentPos: () => ({ wKey: 'w1', sKey: 's1', wLabel: '世界A' }),
+    summarize: noop, reload: async () => {}, addMemory: async () => {},
+    addShared: async () => {}, editShared: async () => {}, deleteShared: async () => {},
+    editMemory: async () => {}, deleteMemory: async () => {},
+    deleteMemories: async () => 0, deleteSave: async () => {},
+    renameSave: async () => {}, renameWorld: async () => {},
+    editPersona: async () => {}, cleanEmpty: async () => ({ saves: 0, worlds: 0 }),
+    deleteByScope: async () => ({ deleted: 0, what: '' }),
+    refreshTop: noop,
+};
+
+const R = { errors, ok: false };
+
+/** 真实地量一个勾选框：看得见吗、勾画出来了吗 */
+function probe(el) {
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    const b = getComputedStyle(el, '::before');
+    const a = getComputedStyle(el, '::after');
+    const scale = (t) => {
+        const m = String(t).match(/matrix\(([-\d.]+)/);
+        return m ? parseFloat(m[1]) : (t === 'none' ? 1 : 0);
+    };
+    return {
+        visible: r.width > 4 && r.height > 4,
+        w: Math.round(r.width), h: Math.round(r.height),
+        checked: el.checked,
+        indeterminate: el.indeterminate,
+        tickScale: Math.round(scale(b.transform) * 100) / 100,
+        hasDash: a.content !== 'none' && a.content !== 'normal',
+    };
+}
+
+try {
+    mountTopDrawer();
+    const drawer = document.getElementById('cmcc-top-drawer');
+    drawer.querySelector('.drawer-icon').click();
+    await sleep(100);
+
+    // ── ① 先出多选栏（模拟点「多选」）──
+    __selTestHook.setMode(false);
+    renderTopPanel({ ctx, api, onGotoSettings: noop });
+    await sleep(60);
+
+    const toggleBtn = [...document.querySelectorAll('.cmcc-selbar button')]
+        .find((b) => b.textContent.includes('多选'));
+    R.toggleBtnFound = !!toggleBtn;
+    if (toggleBtn) toggleBtn.click();
+    await sleep(80);
+
+    R.afterToggleSelectMode = __selTestHook.getMode();
+    R.checkboxCount = document.querySelectorAll('.cmcc-check').length;
+    R.worldChecks = document.querySelectorAll('.cmcc-world-check').length;
+    R.saveChecks = document.querySelectorAll('.cmcc-save-check').length;
+
+    // 全部勾选框都要看得见
+    const all = [...document.querySelectorAll('.cmcc-check')];
+    R.allCheckboxesVisible = all.length > 0 && all.every((c) => probe(c).visible);
+    R.probeBefore = all.map(probe);
+
+    // ── ② 点世界标题行的勾选框 → 下面全勾 ──
+    const wcb = document.querySelector('.cmcc-world-check');
+    R.worldCheckFound = !!wcb;
+    if (wcb) {
+        wcb.checked = true;
+        wcb.dispatchEvent(new Event('change'));
+        await sleep(150);
+    }
+
+    const afterWorld = [...document.querySelectorAll('.cmcc-check')].map(probe);
+    R.afterWorldClick = afterWorld;
+    R.allCheckedAfterWorld = afterWorld.length > 0 && afterWorld.every((p) => p.checked);
+    // ★ 勾要真的画出来（tickScale ≈ 1），不能只是 checked=true
+    R.allTicksDrawnAfterWorld = afterWorld.every((p) => p.tickScale > 0.9);
+    R.selCountAfterWorld = __selTestHook.SELECTED.size;
+    R.selSavesAfterWorld = __selTestHook.SELECTED_SAVES.size;
+    R.selWorldsAfterWorld = __selTestHook.SELECTED_WORLDS.size;
+
+    // ── ③ 取消一条记忆 → 世界和存档应变成半选 ──
+    const rowCb = document.querySelector('.cmcc-entry input.cmcc-check');
+    if (rowCb) {
+        rowCb.checked = false;
+        rowCb.dispatchEvent(new Event('change'));
+        await sleep(120);
+    }
+    const wcb2 = document.querySelector('.cmcc-world-check');
+    const scb2 = document.querySelector('.cmcc-save-check');
+    const pw = probe(wcb2), ps = probe(scb2);
+    R.afterUncheckOne = { world: pw, save: ps };
+    R.worldIndeterminate = !!pw && pw.indeterminate;
+    R.saveIndeterminate = !!ps && ps.indeterminate;
+    // 半选要能看出来：要么有横线，要么勾没画满
+    R.indeterminateVisible = !!pw && pw.visible
+        && (pw.hasDash || pw.tickScale < 0.9);
+
+    R.ok = errors.length === 0
+        && R.toggleBtnFound && R.afterToggleSelectMode === true
+        && R.checkboxCount === 6            // 1 世界 + 2 存档 + 3 条记忆
+        && R.worldChecks === 1 && R.saveChecks === 2
+        && R.allCheckboxesVisible
+        && R.allCheckedAfterWorld && R.allTicksDrawnAfterWorld
+        && R.selWorldsAfterWorld === 1
+        && R.worldIndeterminate && R.saveIndeterminate && R.indeterminateVisible;
+} catch (e) {
+    errors.push('抛错: ' + (e && e.message) + ' @ ' + String(e && e.stack || '').split('\n')[1]);
+}
+
+document.title = 'CMCC_MULTISEL=' + JSON.stringify(R);
+try { console.log(document.title); } catch (e) {}
+
+const pre = document.createElement('pre');
+pre.id = 'cmcc_result';
+pre.style.cssText = 'margin:12px;padding:8px;background:#111;color:#9f9;font-size:12px;'
+    + 'white-space:pre-wrap;border-radius:4px';
+pre.textContent = '结果: ' + (R.ok ? '全部通过 ✓' : '有失败 ✗') + '\n' + JSON.stringify(R, null, 2);
+document.body.appendChild(pre);
+</script>
+</body>
+</html>
