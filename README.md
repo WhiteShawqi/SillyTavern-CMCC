@@ -107,7 +107,8 @@ extensions/
     └── src/
         ├── state.js      设置 + 记忆模型（纯逻辑）
         ├── store.js      记忆 ↔ 世界书 读写与序列化
-        ├── inject.js     动态引导注入
+        ├── inject.js     动态引导 + 记忆注入
+        ├── memo.js       MVU 式记忆块解析
         ├── topbar.js     酒馆顶部入口（改人设 / 记忆）
         └── ui.js         扩展到设置页（切换陪伴者）
 ```
@@ -340,7 +341,7 @@ body: JSON.stringify(generate_data)
 
 ```bash
 cd tests
-node test_core.mjs      # 82 项核心逻辑测试
+node test_core.mjs      # 183 项核心逻辑测试
 ```
 
 ### 模块职责
@@ -389,4 +390,6 @@ node test_core.mjs      # 82 项核心逻辑测试
 
 ## 发布到 GitHub
 
-见 [`docs/发布到GitHub.md`](docs/发布到GitHub.md)（本机暂无 git，步骤已备好）。
+双击 [`推送到GitHub.bat`](推送到GitHub.bat) 即可（git 已装好、仓库已初始化）。
+
+详细步骤与排错见 [`docs/发布到GitHub.md`](docs/发布到GitHub.md)。

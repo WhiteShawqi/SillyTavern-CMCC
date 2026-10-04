@@ -4,3 +4,4 @@ node_modules/
 _notes/
 tests/layout/_render/
 tests/layout/topbar.js
+.github-username
