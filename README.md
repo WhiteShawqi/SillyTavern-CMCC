@@ -1,6 +1,15 @@
 # 跨世界陪伴角色 · CMCC
 
 [![SillyTavern Extension](https://img.shields.io/badge/SillyTavern-Extension-blue)](https://github.com/SillyTavern/SillyTavern)
+[![version](https://img.shields.io/badge/version-1.1.1-green)](https://github.com/WhiteShawqi/SillyTavern-CMCC/releases)
+
+### 📦 安装链接
+
+在酒馆里点 **扩展** 图标 → **Install extension** → 粘贴这一行：
+
+```text
+https://github.com/WhiteShawqi/SillyTavern-CMCC
+```
 
 > 一个固定的角色，陪你玩**任何**角色卡。
 > 她参与剧情，跟着你穿越每个世界，**记得你们经历的一切**。
@@ -113,16 +122,36 @@ CMCC 不把记忆藏在扩展内部，而是**写进一张真正的世界书**�
 
 ## 安装
 
-### 方式一：Git 克隆（推荐）
+### 方式一：在酒馆里直接装（推荐）
+
+点顶部工具栏的 **扩展** 图标 → **Install extension** → 粘贴这一行：
+
+```
+https://github.com/WhiteShawqi/SillyTavern-CMCC
+```
+
+会弹一个「第三方扩展」警告，确认即可（酒馆对所有非官方扩展都会问）。
+装完 **Ctrl+F5** 强制刷新页面。
+
+然后**记得在扩展设置里勾上「启用」**（默认是关的），否则不会有任何效果。
+
+> 详细步骤、装不上怎么办、怎么更新和卸载：见 [`docs/安装.md`](docs/安装.md)。
+
+### 方式二：Git 克隆
 
 ```bash
 cd <SillyTavern>/data/default-user/extensions
-git clone https://github.com/<你的用户名>/SillyTavern-CMCC.git
+git clone https://github.com/WhiteShawqi/SillyTavern-CMCC.git
 ```
 
-### 方式二：手动
+### 方式三：手动解压
 
-把文件夹放进 `<SillyTavern>/data/default-user/extensions/`：
+下载 <https://github.com/WhiteShawqi/SillyTavern-CMCC/archive/refs/heads/main.zip>，
+解压到 `<SillyTavern>/data/default-user/extensions/`。
+
+⚠ **解压出来的文件夹要改名为 `SillyTavern-CMCC`**（zip 默认带 `-main` 后缀）。
+
+目录结构应该是这样：
 
 ```
 extensions/
@@ -131,13 +160,16 @@ extensions/
     ├── index.js
     ├── style.css
     ├── LICENSE
-    └── src/
-        ├── state.js      设置 + 记忆模型（纯逻辑）
-        ├── store.js      记忆 ↔ 世界书 读写与序列化
-        ├── inject.js     动态引导 + 记忆注入
-        ├── memo.js       MVU 式记忆块解析
-        ├── topbar.js     酒馆顶部入口（改人设 / 记忆）
-        └── ui.js         扩展到设置页（切换陪伴者）
+    ├── src/
+    │   ├── state.js      设置 + 内置人设列表 + 记忆模型（纯逻辑）
+    │   ├── store.js      记忆 ↔ 世界书 读写与序列化
+    │   ├── inject.js     动态引导 + 相关记忆检索 + 注入
+    │   ├── memo.js       MVU 式记忆块解析
+    │   ├── summary.js    读预设自带摘要的能力（当前不接入）
+    │   ├── topbar.js     酒馆顶部入口（改人设 / 记忆树 / 多选）
+    │   └── ui.js         扩展到设置页（人设预设 / 导出导入 / 参数）
+    ├── tools/            开发工具（无头浏览器）
+    └── tests/            测试
 ```
 
 装好后刷新 SillyTavern 页面。
