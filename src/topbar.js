@@ -2,8 +2,12 @@
  * CMCC · 酒馆顶部入口（抽屉面板）
  *
  * 位置：注入到 `#top-settings-holder`（与 AI配置 / 世界书 / 扩展 同一排图标）
- * 机制：ST 用 `$(document).on('click', '.drawer-opener')` 委托绑定（script.js:12086），
- *       所以后加的 .drawer-opener + data-target 也能直接工作。
+ *
+ * 机制说明（踩过的坑）：
+ *   ST 里 `.drawer-opener` 是**委托绑定**（script.js:12086），但 `.drawer-toggle`
+ *   是**静态绑定**（script.js:12088 `$('.drawer-toggle').on('click', ...)`），
+ *   在 DOM ready 时就绑完了 —— 扩展后加的 toggle 收不到事件。
+ *   → 所以自己实现点击逻辑（照抄 ST 的 doNavbarIconClick 行为），不依赖委托。
  *
  * 面板内容：改「陪伴角色人设」+「记忆」
  * 切换是哪个角色做陪伴者 → 在扩展设置页（和酒馆助手同位置）
@@ -26,19 +30,25 @@ export function mountTopDrawer() {
     const drawer = el('div', 'drawer');
     drawer.id = DRAWER_ID;
 
-    // 图标（用 drawer-opener + data-target，走 ST 的委托绑定）
+    // 图标
     const toggle = el('div', 'drawer-toggle');
     const icon = el('div',
         'drawer-icon fa-solid fa-people-arrows fa-fw closedIcon cmcc-top-icon');
     icon.id = 'cmcc_drawer_icon';
     icon.title = '跨世界陪伴角色（人设 / 记忆）';
     toggle.appendChild(icon);
-    toggle.setAttribute('data-target', PANEL_ID);
-    toggle.classList.add('drawer-opener');
     drawer.appendChild(toggle);
 
+    // 自实现点击（ST 的静态绑定覆盖不到后加的节点）
+    toggle.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (isTopPanelOpen()) closeDrawer();
+        else openTopPanel();
+    });
+
     // 面板
-    const panel = el('div', 'drawer-content closedDrawer');
+    const panel = el('div', 'drawer-content closedDrawer cmcc-top-panel');
     panel.id = PANEL_ID;
     const head = el('div', 'cmcc-top-head');
     head.innerHTML = '<b>跨世界陪伴角色</b>';
@@ -60,6 +70,15 @@ export function mountTopDrawer() {
     const host = document.getElementById('top-settings-holder');
     if (host) host.appendChild(drawer);
     else document.body.appendChild(drawer);   // 兜底
+
+    // 点面板外面收起（跟 ST 其他抽屉一致的体验）
+    document.addEventListener('mousedown', (ev) => {
+        if (!isTopPanelOpen()) return;
+        const t = ev.target;
+        if (drawer.contains(t)) return;
+        // 点其他顶部图标时不抢（让 ST 自己处理）
+        if (t?.closest?.('#top-settings-holder')) closeDrawer();
+    });
 }
 
 function closeDrawer() {

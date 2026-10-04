@@ -224,18 +224,35 @@
 
 /* ══════════════════════════════════════════
    顶部面板（酒馆顶部图标栏那个）
+
+   注意：ST 的 .drawer-content 已经是
+        display:none / position:absolute / top:var(--topBarBlockSize)
+   我们**不要**覆盖这两条 —— 否则面板会掉进 #top-settings-holder 的 flex 流里被压扁，
+   出现"一个字一行"的竖排。
+   只补宽度、内边距这些视觉参数。
    ══════════════════════════════════════════ */
 
 .cmcc-top-icon {
-    /* 与 ST 其他顶部图标一致 */
+    /* 与 ST 其他顶部图标保持一致，无需额外样式 */
+}
+
+#cmcc-top-drawer {
+    /* ST 的 .drawer 是 width:100%，这里不压缩内容 */
+    flex: 0 0 auto;
 }
 
 #cmcc-top-panel {
-    max-height: 78vh;
-    overflow-y: auto;
-    min-width: 320px;
-    padding: 8px 10px;
+    /* 不覆盖 display / position / top —— 由 ST 的 .drawer-content 负责 */
+    min-width: 380px;
+    width: min(560px, 92vw);
+    max-width: 92vw;
+    max-height: 76vh;
+    padding: 10px 12px;
+    z-index: 3010;
 }
+
+/* 面板打开时，ST 会把 #top-settings-holder 的 z-index 提到 4005（用 :has 判断），
+   我们的面板带 .drawer-content.openDrawer，所以能自动生效 */
 
 .cmcc-top-head {
     display: flex;
@@ -245,13 +262,13 @@
     padding-bottom: 6px;
     margin-bottom: 6px;
     border-bottom: 1px solid var(--SmartThemeBorderColor, #444);
-    position: sticky;
-    top: 0;
-    background: var(--SmartThemeBlurTintColor, rgba(0 0 0 / 0.2));
-    z-index: 2;
+    background: inherit;
 }
 
-.cmcc-top-head b { font-size: 1.02em; }
+.cmcc-top-head b {
+    font-size: 1.02em;
+    white-space: nowrap;
+}
 
 .cmcc-top-close {
     background: none;
@@ -262,11 +279,18 @@
     font-size: 1.2em;
     line-height: 1;
     padding: 0 4px;
+    flex: 0 0 auto;
 }
 
 .cmcc-top-close:hover { opacity: 1; color: #ff6b6b; }
 
-.cmcc-top-body { font-size: 0.92em; }
+.cmcc-top-body {
+    font-size: 0.92em;
+    line-height: 1.5;
+}
+
+/* 面板内所有块：禁止被压扁 */
+.cmcc-top-body > * { min-width: 0; }
 
 .cmcc-top-who {
     display: flex;
@@ -282,11 +306,15 @@
 .cmcc-top-who-label {
     opacity: 0.62;
     font-size: 0.9em;
+    white-space: nowrap;
+    flex: 0 0 auto;
 }
 
 .cmcc-top-who-name {
     font-weight: bold;
-    flex: 1;
+    flex: 1 1 auto;
+    min-width: 80px;
+    word-break: break-word;
 }
 
 .cmcc-top-section {
@@ -303,7 +331,7 @@
     margin-bottom: 6px;
 }
 
-.cmcc-top-sec-head b { flex: 0 0 auto; }
+.cmcc-top-sec-head b { flex: 0 0 auto; white-space: nowrap; }
 
 .cmcc-field {
     display: flex;
@@ -318,10 +346,12 @@
     opacity: 0.7;
     font-size: 0.9em;
     padding-top: 1px;
+    white-space: nowrap;
 }
 
 .cmcc-field-val {
-    flex: 1;
+    flex: 1 1 auto;
+    min-width: 0;
     cursor: pointer;
     opacity: 0.88;
     line-height: 1.45;
