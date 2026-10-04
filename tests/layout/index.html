@@ -199,6 +199,17 @@ function measure() {
         okDisplay: cs.display === 'block',
         okPosition: cs.position === 'absolute',
         openState: isTopPanelOpen(),
+        // ★ 错误注入：让 snapshot 抛错，验证渲染失败是否可见
+        errTest: (() => {
+            const badApi = Object.assign({}, fakeApi, { snapshot: () => { throw new Error('注入的测试错误'); } });
+            try { renderTopPanel({ ctx: fakeCtx, api: badApi, onGotoSettings: () => {} }); }
+            catch (e) { return 'THREW: ' + e.message; }
+            const b = document.getElementById('cmcc-top-panel_body');
+            const t = (b?.textContent || '').trim();
+            // 还原正常渲染
+            renderTopPanel({ ctx: fakeCtx, api: fakeApi, onGotoSettings: () => {} });
+            return t.slice(0, 60);
+        })(),
         // ★ 图标错位检测：所有 .drawer 的宽度应彼此接近
         drawerWidths: [...host.querySelectorAll(':scope > .drawer')]
             .map(d => Math.round(d.getBoundingClientRect().width)),
