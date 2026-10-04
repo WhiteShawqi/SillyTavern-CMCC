@@ -284,13 +284,57 @@ export function renderPanel(o) {
                 try {
                     const txt = await f.text();
                     const obj = JSON.parse(txt);
-                    const asNew = await ctx.callGenericPopup(
-                        '人设怎么处理？\n确定 = 作为**新预设**加入\n取消 = 覆盖当前预设',
-                        ctx.POPUP_TYPE.CONFIRM);
-                    const r = await api.importAll(obj, !!asNew);
+
+                    // ⚠ 这里原来写成「确定=新预设 / 取消=覆盖」，
+                    //   而 callGenericPopup 的 CONFIRM 在用户点「否」时返回 false，
+                    //   `!!ok` 就是 false → **静默覆盖当前人设**。
+                    //   太危险。改成三个明确选项，并且把按钮文字写清楚
+                    //   （弹窗是纯文本，不解析 Markdown，所以不要写 ** 星号）。
+                    const nMem = (function count(o) {
+                        let n = 0;
+                        for (const w of Object.values(o?.worlds || {})) {
+                            for (const s of Object.values(w?.saves || {})) n += (s?.entries || []).length;
+                        }
+                        return n;
+                    })(obj);
+                    const pName = obj?.persona?.name ? `「${obj.persona.name}」` : '（这份文件里没有人设）';
+
+                    const choice = await ctx.callGenericPopup(
+                        `要导入的内容：人设 ${pName}，记忆 ${nMem} 条。\n\n`
+                        + '「新建」—— 作为新预设加入，不影响你现在的角色（推荐）\n'
+                        + '「覆盖」—— 用它替换掉当前预设的人设\n'
+                        + '「取消」—— 什么都不做\n\n'
+                        + '记忆都是按内容去重追加的，任何时候都不会被覆盖。',
+                        ctx.POPUP_TYPE.CONFIRM,
+                        '',
+                        {
+                            okButton: '新建',
+                            cancelButton: '取消',
+                            // 第三个按钮走这里（ST 的 Popup 支持自定义额外按钮）
+                            customButtons: [{
+                                label: '覆盖',
+                                value: 'overwrite',
+                            }],
+                        });
+
+                    // choice: true=新建 / 'overwrite'=覆盖 / false=取消
+                    if (choice === 'overwrite') {
+                        const sure = await ctx.callGenericPopup(
+                            `确定要用 ${pName} 覆盖当前预设的人设吗？\n`
+                            + '（记忆不受影响，只是人设被替换）',
+                            ctx.POPUP_TYPE.CONFIRM, '',
+                            { okButton: '覆盖', cancelButton: '算了' });
+                        if (sure !== true) { ctx.toastr?.info?.('已取消'); return; }
+                    } else if (choice !== true) {
+                        ctx.toastr?.info?.('已取消导入');
+                        return;
+                    }
+
+                    const r = await api.importAll(obj, choice !== 'overwrite');
                     ctx.toastr?.success?.(
                         `导入完成：人设「${r.persona || '（无）'}」，`
-                        + `新增 ${r.worlds} 个世界 / ${r.saves} 个存档 / ${r.entries} 条记忆`);
+                        + `新增 ${r.worlds} 个世界 / ${r.saves} 个存档 / ${r.entries} 条记忆`
+                        + (r.skipped ? `（${r.skipped} 条重复已跳过）` : ''));
                     refresh();
                 } catch (e) {
                     ctx.toastr?.error?.('导入失败：' + e.message);

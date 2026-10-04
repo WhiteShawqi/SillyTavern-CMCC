@@ -113,6 +113,25 @@ export function normalizeSettings(s) {
         }];
     }
 
+    // ── 去重：内容完全一样的人设只留一个 ──
+    // 场景：同一个预设被安装了两次（或重复导入），列表里会出现两条一模一样的。
+    // 判据用「名字 + 三段内容」全等；保留**最先出现的**那条，
+    // 但如果激活项是被删掉的那条，就把激活项挪到保留的那条上。
+    const seen = new Map();     // 指纹 → 保留下来的 id
+    const deduped = [];
+    for (const p of list) {
+        const fp = [p.name, p.description, p.personality, p.scenario].join('\u0000');
+        const keepId = seen.get(fp);
+        if (keepId) {
+            // 重复项：如果它正是当前激活项，把激活项转给保留的那条
+            if (out.activeBuiltinId === p.id) out.activeBuiltinId = keepId;
+            continue;
+        }
+        seen.set(fp, p.id);
+        deduped.push(p);
+    }
+    list = deduped;
+
     out.builtins = list;
     const hasActive = list.some((x) => x.id === out.activeBuiltinId);
     if (!hasActive) out.activeBuiltinId = list[0].id;
