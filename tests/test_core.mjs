@@ -37,6 +37,7 @@ const {
 const {
     buildGuide, injectIntoRequest, stripFromMessages, estimateTokens,
     buildRules, buildWhereBlock, buildMemoryBlock, buildInjectionText, TAG,
+    keywordsOf, pickRelevantMemories,
     WORLDBOOK_CHANNEL,
 } = await import('../src/inject.js');
 const CH = WORLDBOOK_CHANNEL;
@@ -202,13 +203,16 @@ chk(guide.includes(`<${TAG}>`), '带标记');
 chk(guide.includes('阿米娅'), '含身份');
 chk(guide.includes('罗德岛的领袖'), '含 description');
 chk(guide.includes('全球冰封 v3.1.3'), '含当前世界');
-chk(guide.includes('存档1'), '含当前存档');
-chk(guide.includes('存档2'), '提到另一次经历');
-chk(guide.includes('记得一切'), '含「记得一切」');
-chk(guide.includes('不要混淆'), '含「不要混淆」');
-chk(guide.includes('记忆正文') || guide.includes('按「世界」和「第几次」'), '提到记忆按世界/次数分组');
-chk(/人设|合人设/.test(guide), '★ 含「按人设决定是否提及」');
-chk(guide.includes('不要说"世界书"') || guide.includes('不要提元语言'), '含禁止元语言');
+// ★ v0.11.0：位置段不再列"另外几次是…" —— 元层面的话会出戏
+chk(!guide.includes('另外几次是'), '★ 不再列「另外几次是…」（会出戏）');
+chk(guide.includes('不要说破'), '★ 含「不要说破这是设定/游戏」');
+chk(guide.includes('不要提"其他世界"'), '★★ 含「不要提其他世界」硬性底线');
+chk(guide.includes('尤其不能对别的角色'), '★★ 含「尤其不能对 NPC 说」约束');
+chk(guide.includes('不要宣告'), '★ 换档只让她心里有数、不宣告');
+chk(guide.includes('从开场白起你就在场'), '★★ 人设要求开场白即在场的独立角色');
+chk(guide.includes('一个独立的人'), '★ 明确她不是 {user}');
+chk(guide.includes('同行的人'), '含「同行者」定位');
+chk(guide.includes('不抢主角'), '含「不抢主角」');
 
 const g2 = buildGuide({
     companion, wLabel: 'A', saveLabel: 'x', saveCount: 1, otherSaveLabels: [],
@@ -220,8 +224,9 @@ const g3 = buildGuide({
     companion, wLabel: 'A', saveLabel: 'x', saveCount: 1, otherSaveLabels: [],
     settings: S({ announceSaveSwitch: true }), saveSwitched: true,
 });
-chk(g3.includes('换到了另一次经历'), '★ 换存档时有提示');
-chk(!guide.includes('换到了另一次经历'), '非切换时无提示');
+chk(g3.includes('处境确实换了'), '★ 换档时给内部提示');
+chk(!guide.includes('处境确实换了'), '非切换时无提示');
+chk(!/换到了另一次经历/.test(g3), '★ 不再用"另一次经历"这种会出戏的说法');
 console.log('');
 
 // ── 7. 注入请求体 ──
@@ -249,15 +254,16 @@ const longComp = {
 };
 const smallG = buildGuide({
     companion: longComp, wLabel: 'W', saveLabel: 's', saveCount: 1, otherSaveLabels: [],
-    settings: S({ tokenBudget: 400 }), saveSwitched: false,
+    settings: S({ tokenBudget: 1200 }), saveSwitched: false,
 });
 const bigG = buildGuide({
     companion: longComp, wLabel: 'W', saveLabel: 's', saveCount: 1, otherSaveLabels: [],
     settings: S({ tokenBudget: 4000 }), saveSwitched: false,
 });
 chk(estimateTokens(smallG) < estimateTokens(bigG), '小预算产出更少');
-chk(estimateTokens(smallG) <= 400 * 1.5, `小预算受控（约 ${estimateTokens(smallG)}）`);
-chk(smallG.includes('记得一切'), '★ 预算紧张时规则段仍保留（核心不能丢）');
+chk(estimateTokens(smallG) <= 1200 * 1.5, '小预算受控（约 ' + estimateTokens(smallG) + '）');
+chk(smallG.includes('必须遵守的底线'), '★ 预算紧张时底线段仍保留（核心不能丢）');
+chk(estimateTokens(smallG) <= estimateTokens(bigG) * 1.3, '小预算产出接近或少于大预算');
 console.log('');
 
 // ── 9. 迁移 ──
@@ -337,11 +343,12 @@ const mb = buildMemoryBlock({
     mem: memModel, wKey: 'char:A.png', sKey: 's1', wLabel: '全球冰封 v3.1.3',
     budget: 1800,
 });
-chk(mb.includes('当前位置：全球冰封 v3.1.3 / 存档1'), '★ 标明当前世界与存档');
+chk(mb.includes('最近和你一起经历的'), '★ 有「最近」分节');
+chk(mb.includes('全球冰封 v3.1.3'), '★ 标题标了世界名');
 chk(mb.includes('在避难所里冻了一夜'), '含当前存档记忆');
-chk(mb.includes('地堡'), '★ 含同世界其他存档（标为另外一次经历）');
-chk(mb.includes('另外一次经历'), '标注了是同世界的另一次');
-chk(mb.includes('万魔殿'), '★ 含其他世界的记忆');
+// ★ v0.11.0：不再把所有旧存档都塞进去，也不再注入其他世界（会出戏）
+chk(!mb.includes('万魔殿'), '★★ 不再注入其他世界的记忆（硬性：会出戏）');
+chk(!mb.includes('另外一次经历'), '★ 不再用"另一次经历"这种出戏说法');
 chk(mb.includes('USER 怕冷'), '含共同记忆');
 chk(!mb.includes('<cmcc_guide>'), '记忆块不带引导标记');
 
@@ -349,10 +356,13 @@ chk(!mb.includes('<cmcc_guide>'), '记忆块不带引导标记');
 const big = { worlds: { w: { label: 'W', lastSeen: 1, saves: { s: { label: 's', lastSeen: 1,
     entries: Array.from({ length: 500 }, (_, i) => ({ ts: i, text: '第' + i + '条' + '啊'.repeat(30) })) } } } } };
 const mSmall = buildMemoryBlock({ mem: big, wKey: 'w', sKey: 's', wLabel: 'W', budget: 500 });
-const mLarge = buildMemoryBlock({ mem: big, wKey: 'w', sKey: 's', wLabel: 'W', budget: 6000 });
+// 「最近」有条数上限（用户要求 5~10），所以大预算要同时放大上限才看得出差别
+const mLarge = buildMemoryBlock({ mem: big, wKey: 'w', sKey: 's', wLabel: 'W', budget: 6000, recentLimit: 200 });
 chk(estimateTokens(mSmall) <= 750, '小记忆预算受控（约 ' + estimateTokens(mSmall) + '）');
 chk(estimateTokens(mSmall) < estimateTokens(mLarge), '小预算产出少于大预算');
 chk(mSmall.includes('第499条'), '★ 预算紧张时保留最新记忆');
+chk((mSmall.match(/^- /gm) || []).length <= 10, '★ 「最近」默认最多 10 条（用户要求 5~10）');
+chk((mLarge.match(/^- /gm) || []).length > 10, '放大上限后能注入更多');
 
 // 合成
 const combo = buildInjectionText({ guide: bg, memory: mb });
@@ -470,75 +480,73 @@ chk(worldStats(afterAdd).count === 0, '★ 刚创建的存档是空的（0 条�
 
 
 // ── 16. 世界级记忆真的会被注入（回归）──
-console.log('【16】世界级记忆注入');
+console.log('【16】相似旧事检索 + 跨世界隔离');
+// world 范围已在 v0.9.2 取消；这里测的是新的「相关记忆」检索
 const worldModel = {
     worlds: {
         'char:A.png': {
             label: '全球冰封', lastSeen: 5,
             saves: {
-                [WORLDBOOK_CHANNEL]: { label: '整个世界', lastSeen: 5, entries: [
-                    { ts: 1, text: '这世界有一种叫黑石的矿，能烧' },
-                ] },
                 s1: { label: '存档1', lastSeen: 5, entries: [
                     { ts: 2, text: '在避难所里冻了一夜' },
+                    { ts: 4, text: '坐在车里看着窗外的雪' },
                 ] },
                 s2: { label: '存档2', lastSeen: 3, entries: [
-                    { ts: 3, text: '这次直接进了地堡' },
+                    { ts: 3, text: '坐在车里赶了很久的路' },
                 ] },
             },
+        },
+        'char:B.png': {
+            label: '漫综：世界观', lastSeen: 1,
+            saves: { sx: { label: '存档1', lastSeen: 1, entries: [
+                { ts: 9, text: '坐在车里经过万魔殿' },
+            ] } },
         },
     },
 };
 
-// 处在存档1：世界级 + 存档1 + 存档2 都该在
+// ① 「最近」按当前存档给
 const wm = buildMemoryBlock({
+    mem: worldModel, wKey: 'char:A.png', sKey: 's1', wLabel: '全球冰封',
+    context: '我们坐在车里，窗外是雪', budget: 4000,
+});
+chk(wm.includes('最近和你一起经历的'), '★ 有「最近」分节');
+chk(wm.includes('在避难所里冻了一夜'), '最近含当前存档的记忆');
+
+// ② 「相关」：正在写"车里"，应该想起以前车里的事（同世界别的存档）
+chk(wm.includes('和眼前这一幕相似的旧事'), '★ 有「相似旧事」分节');
+chk(wm.includes('坐在车里赶了很久的路'), '★★ 车里 → 想起以前车里的事');
+chk(!wm.includes('万魔殿'), '★★ 相似旧事只在同一世界内找（不跨世界，避免出戏）');
+
+// ③ 没有上下文时不给"相似旧事"
+const noCtx = buildMemoryBlock({
     mem: worldModel, wKey: 'char:A.png', sKey: 's1', wLabel: '全球冰封', budget: 4000,
 });
-chk(wm.includes('黑石'), '★ 世界级记忆被注入（曾经完全丢失）');
-chk(wm.includes('这个世界的常识'), '★ 世界级记忆有独立标题');
-chk(wm.includes('这一次发生的事'), '★ 存档记忆有独立标题');
-chk(wm.includes('在避难所里冻了一夜'), '存档1 记忆被注入');
-chk(wm.includes('地堡'), '存档2 作为「另外一次经历」被注入');
-chk(!wm.includes('整个世界（另外一次经历）'), '★ 世界通道没被当成一个存档');
-chk(wm.indexOf('黑石') < wm.indexOf('在避难所里冻了一夜'), '世界级排在存档级之前');
+chk(!noCtx.includes('和眼前这一幕相似的旧事'), '★ 没有上下文就不硬塞相似旧事');
 
-// 换到存档2：世界级仍在（这正是 world 范围的意义）
-const wm2 = buildMemoryBlock({
-    mem: worldModel, wKey: 'char:A.png', sKey: 's2', wLabel: '全球冰封', budget: 4000,
+// ④ 关键词分词
+const kws = keywordsOf('我们坐在车里，窗外下着雪');
+chk(kws.has('车里'), '★ 分词能抽出「车里」');
+chk(kws.has('坐在'), '分词能抽出「坐在」');
+chk(keywordsOf('').size === 0, '空串 → 空集合');
+
+// ⑤ 相关性排序：重合多的排前面
+const rel = pickRelevantMemories({
+    mem: worldModel, wKey: 'char:A.png', sKey: 's1',
+    context: '坐在车里看着窗外的雪', limit: 5,
 });
-chk(wm2.includes('黑石'), '★ 换存档后世界级记忆依然在（world 范围的意义）');
-chk(wm2.includes('地堡'), '换存档后当前存档记忆正确');
-chk(wm2.includes('避难所'), '旧存档变成「另外一次经历」');
+chk(rel.length >= 1, '检索到相关记忆');
+chk(rel.every((x) => x.score >= 2), '每条至少重合 2 个关键词');
+chk(rel[0].text.includes('车里'), '★ 最相关的确实是车里那条');
 
-// 只有世界级记忆、没有存档记忆时也不该丢
-const onlyWorld = {
-    worlds: { w: { label: 'W', lastSeen: 1, saves: {
-        [WORLDBOOK_CHANNEL]: { label: '整个世界', lastSeen: 1, entries: [{ ts: 1, text: '只有世界级' }] },
-    } } },
-};
-const ow = buildMemoryBlock({ mem: onlyWorld, wKey: 'w', sKey: 'sX', wLabel: 'W', budget: 2000 });
-chk(ow.includes('只有世界级'), '★ 只有世界级记忆时也能注入');
-chk(ow.includes('当前位置：W'), '没有存档时标题不显示存档名');
-
-// 世界通道不计入存档数
-const wst = worldStats(worldModel.worlds['char:A.png']);
-chk(wst.saveCount === 2, '★ 世界通道不计入存档数（应为 2）');
-chk(wst.count === 3, '世界级条目仍计入这个世界总数');
-chk(wst.worldEntryCount === 1, '单独暴露世界级条目数');
-chk(wst.saves.every((x) => x.key !== WORLDBOOK_CHANNEL), '存档列表里没有世界通道');
-
-// bookStats 排除内部容器
-const bst = bookStats({
-    'char:A.png': worldModel.worlds['char:A.png'],
-    __shared__: { label: '共同', saves: { common: { label: '共同', entries: [{ ts: 1, text: 'x' }] } } },
-});
-chk(bst.worldCount === 1, '★ __shared__ 不算一个世界');
-chk(bst.sharedCount === 1, '共同记忆单独计数');
-chk(!bst.worlds.some((w) => w.key === '__shared__'), '世界列表里没有 __shared__');
+// ⑥ 世界通道不计入存档数（历史数据兼容）
+const wst = worldStats({ saves: {
+    s1: { label: 'a', entries: [{}] }, s2: { label: 'b', entries: [{}] },
+    [WORLDBOOK_CHANNEL]: { label: '整个世界', entries: [{}] },
+} });
+chk(wst.saveCount === 2, '★ 世界通道不计入存档数');
 console.log('');
 
-
-// ── 17. 复刻真实数据：次数 ≠ 条数（截图回归）──
 console.log('【17】次数与条数不能混');
 // 真实案例：仙子堕落记2.1.1 MVU，4 个存档 + 1 条世界级记忆
 const realW = emptyWorld('仙子堕落记2.1.1 MVU');

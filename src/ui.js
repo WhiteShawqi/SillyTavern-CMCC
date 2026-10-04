@@ -379,7 +379,11 @@ export function renderPanel(o) {
     row2.appendChild(mkNum('自动整理(条)', 'summarizeEvery', 0, 200, '每收到这么多消息整理一次；0=关闭自动'));
     row2.appendChild(mkNum('冷却(秒)', 'summarizeCooldown', 10, 3600));
     row2.appendChild(mkNum('引导预算', 'tokenBudget', 200, 4000));
-    row2.appendChild(mkNum('记忆预算', 'memoryBudget', 200, 20000,
+    row2.appendChild(mkNum('最近记忆(条)', 'recentMemoryLimit', 0, 50,
+        '注入多少条「最近」的记忆（建议 5~10）'));
+    row2.appendChild(mkNum('相似旧事(条)', 'relevantMemoryLimit', 0, 20,
+        '注入多少条「和眼前相似的旧事」（建议 2~5）'));
+        row2.appendChild(mkNum('记忆预算', 'memoryBudget', 200, 20000,
         '记忆注入的 token 上限；记忆很多时按此截断'));
     sec2.appendChild(row2);
     inner.appendChild(sec2);

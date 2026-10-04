@@ -399,6 +399,14 @@ function migrateWorldScope() {
 // 注入
 // ─────────────────────────────────────────────
 
+/** 取最近 n 条对话文本，作为「相似旧事」检索的依据 */
+function recentContext(n = 8) {
+    try {
+        const c = ctx();
+        return (c.chat || []).slice(-n).map((m) => m?.mes || '').join('\n');
+    } catch (e) { return ''; }
+}
+
 function onSettingsReady(generateData) {
     try {
         if (!settings.enabled || !hasCompanion()) return;
@@ -437,6 +445,10 @@ function onSettingsReady(generateData) {
                 wKey: p.wKey, sKey: p.sKey, wLabel: p.wLabel,
                 budget: settings.memoryBudget || 1800,
                 saveLimit: settings.saveMemoryLimit || 500,
+                recentLimit: settings.recentMemoryLimit || 8,
+                relevantLimit: settings.relevantMemoryLimit || 4,
+                // 「相似旧事」的检索依据：最近几条对话
+                context: recentContext(8),
             })
             : '';
 

@@ -35,6 +35,10 @@ export const DEFAULT_SETTINGS = {
 
     /** 记忆直接注入提示词（不依赖世界书挂载） */
     injectMemory: true,
+    /** 「最近」注入多少条（用户要求 5~10） */
+    recentMemoryLimit: 8,
+    /** 「相似旧事」注入多少条（用户要求 2~5） */
+    relevantMemoryLimit: 4,
     /** 记忆注入的 token 预算 */
     memoryBudget: 1800,
     /** 引导文本的 token 预算 */

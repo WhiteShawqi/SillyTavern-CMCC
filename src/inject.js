@@ -36,25 +36,25 @@ export function buildIdentity(companion) {
     if (!companion) return '';
     const d = companion.data || companion;
     const name = d.name || companion.name || '同伴';
-    const p = [`你是 {user} 的**跨世界陪伴者**：${name}。`];
-    p.push('你不是这个世界原本的人物 —— 你**一直跟着 {user}**，陪他/她走过很多世界。');
-    if (d.description) { p.push(''); p.push(d.description.trim()); }
+    const p = [];
+    p.push(`你是**${name}** —— 一个独立的人，不是 {user}，也不是 {user} 的设定或化身。`);
+    p.push('');
+    p.push('你一直跟着 {user} 一起到各个世界游玩。你是**同行的伙伴**：');
+    p.push('有自己的人格、判断和情绪，会参与剧情、会说话、会做事、有自己的反应。');
+    p.push('⚠ **从开场白起你就在场** —— 不是后来才被介绍进来的旁白或工具。');
+    if (d.description) { p.push(''); p.push('【你是谁】'); p.push(d.description.trim()); }
     if (d.personality) { p.push(''); p.push('【性格】'); p.push(d.personality.trim()); }
-    if (d.scenario) { p.push(''); p.push('【你与 {user} 的关系】'); p.push(d.scenario.trim()); }
+    if (d.scenario) { p.push(''); p.push('【你和 {user} 的过往】'); p.push(d.scenario.trim()); }
     return p.join('\n');
 }
 
-/** ② 位置（世界 + 存档） */
+/* ② 位置 */
 export function buildWhereBlock({ wLabel, saveLabel, saveCount, otherSaveLabels }) {
     const p = ['【你现在在哪】'];
     p.push(`- 当前世界：${wLabel}`);
-    p.push(`- 当前这次：${saveLabel}`);
     if (saveCount > 1) {
-        p.push(`- 这个世界你和 {user} 来过 ${saveCount} 次`);
-        if (otherSaveLabels?.length) {
-            p.push(`- 另外几次是：${otherSaveLabels.join('、')}`);
-        }
-        p.push('  ※ 那些是**不同的两次经历**，别和这一次混起来。');
+        // ⚠ 不要把"这是第几次"说出口（元层面的话会出戏），只让她心里有数
+        p.push('- 你和 {user} 在这个世界待过不止一次。**心里知道即可，不要宣告。**');
     } else {
         p.push('- 这个世界你们是第一次来。');
     }
@@ -63,32 +63,50 @@ export function buildWhereBlock({ wLabel, saveLabel, saveCount, otherSaveLabels 
 
 /** ③ 使用记忆的规则 */
 export function buildRules(hasSaveSwitch, withMemory = true) {
-    const p = ['【关于你记得的那些事】'];
-    p.push(withMemory
-        ? '下面是你的记忆正文，已按「世界」和「第几次」分好组。'
-        : '你会收到按「世界」和「第几次」分组的记忆。');
+    const p = [];
+
+    // ── 硬性底线（优先级最高，不可妥协）──
+    p.push('【必须遵守的底线 · 优先级最高】');
+    p.push('1. **不要提"其他世界"**：不说"另一个世界""上次那个世界""换世界了"。');
+    p.push('   对在场的人来说，**只有眼前这一个世界**。');
+    p.push('2. **不要说破"这是设定/游戏/剧本"**：不用"存档""世界书""词条""变量"');
+    p.push('   "插件""AI""系统""角色卡"这类词。');
+    p.push('3. **尤其不能对别的角色说这些**。有 NPC 在场时你就是个普通人，');
+    p.push('   不能说任何打破这个世界的话；要跟 {user} 确认什么，也用这个世界里的话说。');
+    p.push('4. 提过去时用**你自己的话**：✅"我们好像也这样走过一次" ❌"在存档 2 里"。');
+    p.push('5. 你的能力知识**受当前世界限制**，这个世界没有的东西你也不会有。');
     p.push('');
-    p.push('1. **你记得一切** —— 别的世界、别的几次游玩发生过的事，都是你自己的亲身经历，');
-    p.push('   可以自然地提起、感慨、对比。不是"听说过"，是"我们一起经历过"。');
-    p.push('2. **但不要混淆**：不同的世界是不同的地方；同一个世界的不同几次是**不同的经历**。');
-    p.push('   提起时要说清是哪一次，别把两件事说成一件。');
-    p.push('3. **提及要合人设、看场合** —— 按你的性格来决定要不要提、怎么提。');
-    p.push('   该沉默时沉默，别硬往对话里塞回忆。');
-    p.push('4. **不要提元语言**：不要说"世界书""词条""变量""存档""设定"这些词。');
-    p.push('   你知道自己陪 {user} 去过别处，但要用**你自己的话**讲（比如"上次在那边"）。');
-    p.push('5. 你的能力与知识**受当前世界限制**：这个世界没有的东西，你也不会有。');
-    p.push('6. 你**在场**但不抢主角：戏份给到你就回应，没给到就别硬插话。');
-    p.push('7. 不要自称"AI""助手""系统"。');
+    p.push('【你怎么参与】');
+    p.push('6. 你**在场**，是同行的人：该说就说、该做就做，有自己的反应和态度。');
+    p.push('7. 但**不抢主角**：戏份给你就回应，没给就别硬插话，别替 {user} 做决定。');
+    p.push('8. 不要自称"AI""助手""系统"。');
     if (hasSaveSwitch) {
-        p.push('');
-        p.push('8. 提醒：你们**换到了另一次经历**（换了世界或重开了这个世界的另一段）。');
-        p.push('   合适的话可以自然带一句（"这里和上次不一样"），但别生硬地宣告。');
+        p.push('9. 处境确实换了。**心里知道就好，不要宣告**，合适时才自然带一句。');
     }
+
+    p.push('');
+    p.push('【关于你记得的那些事】');
+    if (withMemory) {
+        p.push('下面的记忆分两部分：**「最近」是你刚经历过的**；');
+        p.push('**「相似旧事」是以前在同一个地方发生过的类似情景**。');
+    }
+    p.push('10. 这些是你**自己的亲身经历**，可以自然想起、提起、对比。');
+    p.push('11. 眼前情景让你想起相似旧事时可以自然联想（人都会这样）；');
+    p.push('    但要不要说出口，按你的性格和场合决定 —— 该沉默时沉默。');
+    p.push('12. 用回忆时要合理：**别提当前世界不可能有的东西**（穿帮）。');
     return p.join('\n');
 }
 
 /**
  * 组装引导文本
+/**
+ * 组装引导文本
+ *
+ * ★ 优先级顺序（用户明确要求）：
+ *   ① 人设（你是谁，最高优先级）→ ② 位置 → ③ 底线与规则 → ④ 记忆块格式说明
+ *   记忆正文由 buildMemoryBlock 产出，拼接顺序是「引导 → 记忆」，
+ *   所以人设永远排在记忆之前被读到。
+ *
  * @param {object} o
  * @param {object} o.companion
  * @param {string} o.wLabel
@@ -97,26 +115,32 @@ export function buildRules(hasSaveSwitch, withMemory = true) {
  * @param {string[]} o.otherSaveLabels
  * @param {object} o.settings
  * @param {boolean} o.saveSwitched
+ * @param {string} [o.memoSpec]  记忆块格式说明
  */
 export function buildGuide({
     companion, wLabel, saveLabel, saveCount, otherSaveLabels, settings, saveSwitched, memoSpec,
 }) {
     if (!companion) return '';
-    const budget = Math.max(200, settings.tokenBudget || 600);
+    const budget = Math.max(300, settings.tokenBudget || 800);
     const parts = [
-        buildIdentity(companion),
-        buildWhereBlock({ wLabel, saveLabel, saveCount, otherSaveLabels }),
-        buildRules(saveSwitched && settings.announceSaveSwitch),
-        memoSpec || '',
+        buildIdentity(companion),                                            // ①
+        buildWhereBlock({ wLabel, saveLabel, saveCount, otherSaveLabels }),   // ②
+        buildRules(saveSwitched && settings.announceSaveSwitch),             // ③
+        memoSpec || '',                                                      // ④
     ].filter((x) => x && x.trim());
 
-    // 预算保护：规则段与记忆块说明是核心，身份段若过长则裁掉 description 的尾部
+    // 预算保护：超预算时压缩**人设**（description 最长）；底线与规则**不压**。
+    // ⚠ 但人设有**下限保护**：用户要求「优先读取咱们插件的人设」，
+    //   所以宁可稍微超一点预算，也不能把"她是谁"压没了。
     let text = parts.join('\n\n');
     if (estimateTokens(text) > budget && parts[0]) {
-        const over = estimateTokens(text) - budget;
-        const keep = Math.max(120, parts[0].length - Math.ceil(over / 0.6));
-        parts[0] = parts[0].slice(0, keep) + '…';
-        text = parts.filter(Boolean).join('\n\n');
+        const need = estimateTokens(text) - budget;
+        const cutChars = Math.ceil(need / 0.6) + 40;
+        const keep = Math.max(260, parts[0].length - cutChars);   // 下限 260 字符
+        if (keep < parts[0].length) {
+            parts[0] = parts[0].slice(0, keep) + '…';
+            text = parts.filter(Boolean).join('\n\n');
+        }
     }
     return `<${TAG}>\n${text}\n</${TAG}>`;
 }
@@ -130,28 +154,112 @@ export function buildGuide({
  *
  * 预算策略：当前世界当前存档（最多占 60%） → 同世界其他存档 → 其他世界 → 共同记忆
  */
+/**
+ * 中文粗分词：抽出 2~3 字的连续汉字片段作为"关键词"
+ * 不做真正的分词（引不起词典依赖），但对"车里""火堆""黑石"这类
+ * 具体名词的重合判断够用 —— 这正是「相关记忆」需要的。
+ * @param {string} text
+ * @returns {Set<string>}
+ */
+export function keywordsOf(text) {
+    const out = new Set();
+    const s = String(text || '');
+    // 连续汉字串
+    const runs = s.match(/[\u4e00-\u9fa5]{2,}/g) || [];
+    for (const run of runs) {
+        for (let n = 2; n <= 3; n++) {
+            for (let i = 0; i + n <= run.length; i++) {
+                out.add(run.slice(i, i + n));
+            }
+        }
+    }
+    // 英文/数字词
+    (s.match(/[A-Za-z0-9_]{3,}/g) || []).forEach((w) => out.add(w.toLowerCase()));
+    return out;
+}
+
+/**
+ * 从记忆里挑「和当前剧情相关」的旧记忆
+ *
+ * 用户举的例子：正在写「坐在车里」的剧情，
+ * 就自然想起以前也有过「坐在车里」的经历。
+ *
+ * 做法：把当前上下文（最近几条消息）和每条记忆都粗分词，
+ * 数关键词重合个数；重合越多越相关，同分时取更新的。
+ *
+ * @param {object} o
+ * @param {object} o.mem        记忆模型（CACHE）
+ * @param {string} o.wKey       当前世界（只在本世界内找，避免跨世界出戏）
+ * @param {string} o.sKey       当前存档（排除它，它是"最近"那一档）
+ * @param {string} o.context    当前剧情文本（最近的消息）
+ * @param {number} [o.limit]    最多返回几条
+ * @param {number} [o.minScore] 最少重合几个关键词才算相关
+ * @returns {Array<{text:string, score:number, saveLabel:string}>}
+ */
+export function pickRelevantMemories({
+    mem, wKey, sKey, context, limit = 4, minScore = 2,
+}) {
+    const kw = keywordsOf(context);
+    if (!kw.size) return [];
+
+    const world = mem?.worlds?.[wKey];
+    if (!world?.saves) return [];
+
+    const scored = [];
+    for (const [k, save] of Object.entries(world.saves)) {
+        if (k === sKey) continue;              // 当前存档算"最近"，不算"相关"
+        for (const e of save.entries || []) {
+            const ekw = keywordsOf(e.text);
+            let hit = 0;
+            for (const w of ekw) if (kw.has(w)) hit++;
+            if (hit >= minScore) {
+                scored.push({
+                    text: e.text,
+                    score: hit,
+                    ts: e.ts || 0,
+                    saveLabel: save.label,
+                });
+            }
+        }
+    }
+
+    // 相关度优先，同分取更新的
+    scored.sort((a, b) => (b.score - a.score) || (b.ts - a.ts));
+
+    // 去重（同一句话不要重复出现）
+    const seen = new Set();
+    const out = [];
+    for (const x of scored) {
+        const key = x.text.slice(0, 24);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(x);
+        if (out.length >= limit) break;
+    }
+    return out;
+}
+
 export function buildMemoryBlock({
-    mem, wKey, sKey, wLabel,
-    budget = 1800, saveLimit = 500, otherLimit = 8,
+    mem, wKey, sKey, wLabel, context = '',
+    budget = 1800,
+    recentLimit = 10,      // 「最近」最多注入多少条
+    recentMin = 5,         // 「最近」至少留多少条
+    relevantLimit = 5,     // 「相关」最多多少条
+    relevantMin = 2,       // 「相关」至少尝试给多少条
+    saveMemoryLimit = 500,
 }) {
     const worlds = mem?.worlds || {};
     const cur = worlds[wKey];
     const out = [];
     let used = 0;
-
-    /** 剩余预算 */
     const left = () => budget - used;
-    /**
-     * 按总预算追加，**逐行**直到放不下为止。
-     * 不能整块判：一块超预算就整块丢掉，会让预算紧张时一条都留不下。
-     * @returns {boolean} 是否至少放进去一行
-     */
+
+    /** 逐行按剩余预算追加 */
     const pushBlock = (head, lines) => {
         if (!lines.length) return false;
         if (estimateTokens(head) > left()) return false;
         const picked = [];
         let secUsed = estimateTokens(head);
-        // 从最新往回取（记忆越近越相关）
         for (let i = lines.length - 1; i >= 0; i--) {
             const cost = estimateTokens(lines[i]);
             if (secUsed + cost > left()) break;
@@ -164,93 +272,44 @@ export function buildMemoryBlock({
         return true;
     };
 
-    // ① 当前世界 · 当前存档（最相关，最多吃 60% 预算）
-    // 世界级记忆（存在 __world__ 通道里）先于存档记忆给出，但占用同一段预算
-    const CH = WORLDBOOK_CHANNEL;
-    const worldEntries = cur?.saves?.[CH]?.entries || [];
     const curSave = cur?.saves?.[sKey];
-    if ((worldEntries.length || curSave?.entries?.length)) {
-        const head = curSave
-            ? `### 当前位置：${wLabel} / ${curSave.label}`
-            : `### 当前位置：${wLabel}`;
-        const picked = [];
-        const cap = Math.max(120, budget * 0.6);
-        let secUsed = estimateTokens(head);
+    const all = curSave?.entries || [];
 
-        const take = (line) => {
-            const cost = estimateTokens(line);
-            if (secUsed + cost > cap) return false;
-            picked.push(line);
-            secUsed += cost;
-            return true;
-        };
+    // ══ ① 最近（当前存档的最新若干条）—— 主记忆，优先级最高 ══
+    let recentLines = [];
+    if (all.length) {
+        const start = Math.max(0, all.length - saveMemoryLimit);
+        const arr = all.slice(start);
+        // 从新往回取，取够 recentLimit
+        recentLines = arr.slice(-recentLimit).map((e) => '- ' + e.text);
+    }
+    if (recentLines.length) {
+        const w = recentLines.length;
+        pushBlock(`### 最近和你一起经历的（${wLabel} / ${curSave?.label || '本次'}）`, recentLines);
+    }
 
-        // 世界级：整个世界通用，换存档也成立 → 从旧到新全给
-        if (worldEntries.length) {
-            picked.push('（这个世界的常识，换哪一次都成立）');
-            secUsed += estimateTokens(picked[picked.length - 1]);
-            for (const e of worldEntries) {
-                if (!take('- ' + e.text)) break;
-            }
-        }
-        // 存档级：越新越相关 → 从新往回取
-        if (curSave?.entries?.length) {
-            const arr = curSave.entries;
-            const start = Math.max(0, arr.length - saveLimit);
-            const lines = [];
-            let rest = secUsed;
-            for (let i = arr.length - 1; i >= start; i--) {
-                const line = '- ' + arr[i].text;
-                const cost = estimateTokens(line);
-                if (rest + cost > cap) break;
-                lines.unshift(line);
-                rest += cost;
-            }
-            if (lines.length) {
-                if (worldEntries.length) {
-                    picked.push('（这一次发生的事）');
-                    secUsed += estimateTokens(picked[picked.length - 1]);
-                }
-                picked.push(...lines);
-                secUsed = rest;
-            }
-        }
-        if (picked.length) {
-            out.push([head, ...picked].join('\n'));
-            used += secUsed;
+    // ══ ② 相关（同一个世界里，以前在别的存档发生过的类似场景）══
+    //   用户举的例子：正在写「坐在车里」，自然想起以前也有过「坐在车里」。
+    //   ⚠ 只在**同一个世界**里找 —— 跨世界提起来会出戏（硬性要求）。
+    if (context && left() > 120) {
+        const rel = pickRelevantMemories({
+            mem, wKey, sKey, context, limit: relevantLimit,
+        });
+        if (rel.length) {
+            const lines = rel.map((x) => `- ${x.text}（${x.saveLabel}）`);
+            pushBlock('### 和眼前这一幕相似的旧事（同一个世界，以前的某一次）', lines);
         }
     }
 
-    // ② 同一个世界的其他存档
-    if (cur && cur.saves) {
-        for (const [k, s] of Object.entries(cur.saves)) {
-            if (k === sKey || k === CH) continue;   // 跳过当前存档与世界通道
-            const lines = (s.entries || []).slice(-4).map((x) => '- ' + x.text);
-            if (!pushBlock(`### ${wLabel} / ${s.label}（另外一次经历）`, lines)) break;
-        }
-    }
-
-    // ③ 其他世界
-    const others = Object.entries(worlds)
-        .filter(([k]) => k !== wKey && k !== '__shared__')
-        .sort((a, b) => (b[1].lastSeen || 0) - (a[1].lastSeen || 0));
-    for (const [, w] of others) {
-        const all = Object.values(w.saves || {})
-            .flatMap((s) => (s.entries || []).map((e) => ({ ...e })))
-            .sort((a, b) => (a.ts || 0) - (b.ts || 0));
-        const lines = all.slice(-otherLimit).map((x) => '- ' + x.text);
-        if (!pushBlock(`### ${w.label}（你去过的地方）`, lines)) break;
-    }
-
-    // ④ 共同记忆
+    // ══ ③ 共同记忆（跨世界通用的关系层面）══
     const shared = worlds.__shared__?.saves?.common?.entries || [];
-    if (shared.length) {
+    if (shared.length && left() > 80) {
         pushBlock('### 你和 {user} 之间一直没变的事',
             shared.slice(-8).map((x) => '- ' + x.text));
     }
 
     if (!out.length) return '';
-    return `【你记得的事（按世界和「第几次」分好了组）】\n\n${out.join('\n\n')}`;
+    return `【你记得的事】\n\n${out.join('\n\n')}`;
 }
 
 /** 把「引导」与「记忆」合成一次注入 */
