@@ -390,6 +390,6 @@ node test_core.mjs      # 183 项核心逻辑测试
 
 ## 发布到 GitHub
 
-双击 [`推送到GitHub.bat`](推送到GitHub.bat) 即可（git 已装好、仓库已初始化）。
+双击 [`push-to-github.bat`](push-to-github.bat) 即可（git 已装好、仓库已初始化）。
 
 详细步骤与排错见 [`docs/发布到GitHub.md`](docs/发布到GitHub.md)。

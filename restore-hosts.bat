@@ -1,8 +1,7 @@
 @echo off
 chcp 65001 >nul
-title Fix GitHub Direct Connection
+title Restore hosts
 
-:: Auto-elevate to administrator
 net session >nul 2>&1
 if %errorLevel% neq 0 (
     echo Requesting administrator privileges...
@@ -10,4 +9,4 @@ if %errorLevel% neq 0 (
     exit /b
 )
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0tools\fix-hosts.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0tools\restore-hosts.ps1"

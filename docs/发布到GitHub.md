@@ -64,7 +64,7 @@ git ls-remote https://github.com/git/git.git HEAD                  # 要能秒�
    - **不要**勾 Add README / .gitignore / license（我们都有）
    - 点 **Create repository**
 
-2. 双击项目根目录的 **[推送到GitHub.bat]**
+2. 双击项目根目录的 **[push-to-github.bat]**
 
 3. 脚本会自己：
    - 检查 git
