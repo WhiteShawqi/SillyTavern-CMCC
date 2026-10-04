@@ -88,7 +88,16 @@ function currentPos() {
 
     let chatId = '';
     try { chatId = c.getCurrentChatId?.() || ''; } catch (e) { /* ignore */ }
-    return { wKey, wLabel, sKey: saveKey(chatId), chatId, avatar, charName, groupId: c.groupId };
+    // 存档标签：ST 的聊天名形如 "角色名 - 2026-10-05@01-23-45"，取后面的时间
+    let saveLabel = '';
+    if (chatId) {
+        const m = String(chatId).match(/@(\d{4}-\d{2}-\d{2})@(\d{2}-\d{2})/);
+        saveLabel = m ? `${m[1]} ${m[2].replace('-', ':')}` : String(chatId);
+    }
+    return {
+        wKey, wLabel, sKey: saveKey(chatId), saveLabel,
+        chatId, avatar, charName, groupId: c.groupId,
+    };
 }
 
 function posKey(p) { return p.wKey + '|' + p.sKey; }
@@ -295,6 +304,14 @@ function ensurePosition(p) {
 async function writeMemory(pos, entry) {
     if (!entry || !entry.text) return false;
     const scope = entry.scope || 'save';
+
+    // ⚠ 没有有效聊天 ID 就**不记录**：否则会建出 'default' 这种垃圾存档，
+    //   等聊天建好后又建一个 —— 表现成「没切存档却冒出一堆存档」。
+    if (scope !== 'shared' && !pos?.sKey) {
+        warn('当前没有有效聊天（getCurrentChatId 为空），本条记忆跳过，不建存档');
+        return false;
+    }
+
     const book = await loadFromBook();
 
     if (scope === 'shared') {
@@ -320,6 +337,28 @@ async function writeMemory(pos, entry) {
  * 幂等 —— 迁完通道就删掉，再跑没有可迁的
  * @returns {number} 迁移条数
  */
+/**
+ * 迁移：把历史上误建的 'default' 存档并进当前存档
+ * （saveKey 曾经在无聊天时返回 'default'，留下了垃圾存档）
+ * @param {string} curSKey 当前有效的存档键
+ * @returns {number} 迁移条数
+ */
+function migrateDefaultSave(curSKey) {
+    if (!curSKey) return 0;
+    let moved = 0;
+    for (const w of Object.values(CACHE.worlds)) {
+        const d = w?.saves?.default;
+        if (!d?.entries?.length) { if (d) delete w.saves.default; continue; }
+        ensureSave(w, curSKey, '');
+        for (const e of d.entries) {
+            addMemory(w, curSKey, e.text, e.kind || 'memo');
+            moved++;
+        }
+        delete w.saves.default;
+    }
+    return moved;
+}
+
 function migrateWorldScope() {
     let moved = 0;
     for (const w of Object.values(CACHE.worlds)) {
@@ -507,6 +546,11 @@ async function summarize(manual = false) {
             summarizePrompt(companionName, p.wLabel, saveLabel, tp), false, false);
         const got = parseSummaries(raw);
 
+        if (!p.sKey) {
+            if (manual) ctx().toastr?.warning?.('当前没有有效聊天，无法整理记忆');
+            warn('没有有效聊天 ID，跳过整理');
+            return;
+        }
         await loadFromBook();   // 重新读，避免覆盖期间的用户编辑
         const w = CACHE.worlds[p.wKey] || (CACHE.worlds[p.wKey] = emptyWorld(p.wLabel));
         got.entries.forEach((x) => addMemory(w, p.sKey, x, 'auto'));
@@ -739,15 +783,22 @@ const api = {
      * @param {'save'|'shared'|'currentWorld'} scope
      *        （world 范围已在 v0.9.2 取消，旧数据启动时自动迁移）
      * @param {string} [wKey] 指定世界；不给就用当前所在世界
+     * @param {string} [sKey] 指定存档（scope='save' 时用）
      * @returns {{deleted:number, what:string}}
      */
-    async deleteByScope(scope, wKey) {
+    async deleteByScope(scope, wKey, sKey) {
         await loadFromBook();
         const p = currentPos();
-        // 允许指定世界（多选删除整个世界的场景）
-        const target = wKey
-            ? { ...p, wKey, wLabel: CACHE.worlds[wKey]?.label || wKey }
-            : p;
+        // 允许指定世界 / 存档（多选删除整个存档、整个世界的场景）
+        const target = { ...p };
+        if (wKey) {
+            target.wKey = wKey;
+            target.wLabel = CACHE.worlds[wKey]?.label || wKey;
+        }
+        if (sKey) {
+            target.sKey = sKey;
+            target.saveLabel = CACHE.worlds[target.wKey]?.saves?.[sKey]?.label || sKey;
+        }
         const r = clearByScope(CACHE.worlds, scope, target);
         purgeEmpty(CACHE.worlds);
         await saveToBook();
@@ -996,9 +1047,12 @@ jQuery(async () => {
             const book = await loadFromBook();
             const moved = migrateWorldScope();
             if (moved) log('迁移旧的世界级记忆 %d 条', moved);
+            const curSKey = currentPos().sKey;
+            const movedD = migrateDefaultSave(curSKey);
+            if (movedD) log('迁移 default 存档里的 %d 条记忆到当前聊天', movedD);
             const r = purgeEmpty(CACHE.worlds);
             if (r.saves || r.worlds) log('清理空存档 %d 个 / 空世界 %d 个', r.saves, r.worlds);
-            if (moved || r.saves || r.worlds) {
+            if (moved || movedD || r.saves || r.worlds) {
                 await saveToBook(book);
                 panel?.refresh();
                 refreshTop();

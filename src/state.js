@@ -85,8 +85,17 @@ export function worldLabel(c) {
     return '未知世界';
 }
 
+/**
+ * 由聊天 ID 得到存档键
+ *
+ * ⚠ 返回 null 表示「当前没有有效聊天」——调用方必须**放弃记录**。
+ *   曾经这里返回 'default'，于是没有聊天时也会建一个叫 'default' 的
+ *   持久化存档；等聊天真正建好、ID 变了，又建一个 —— 结果就是
+ *   「没切存档却冒出一堆存档」（用户报的 bug）。
+ */
 export function saveKey(chatId) {
-    return chatId ? String(chatId) : 'default';
+    const id = String(chatId == null ? '' : chatId).trim();
+    return id ? id : null;
 }
 
 // ─────────────────────────────────────────────

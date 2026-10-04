@@ -883,3 +883,61 @@
     background: rgba(127 127 127 / 0.06);
     border-left: 2px solid rgba(122 162 247 / 0.35);
 }
+
+/* ══ 正文里的「本次记忆」折叠块 ══
+   AI 输出 <details class="cmcc">，渲染成一张可折叠的小卡片。
+   默认收起：不挡阅读；想回看这次记了什么就点开。 */
+details.cmcc {
+    margin: 6px 0;
+    padding: 0;
+    border: 1px solid rgba(122 162 247 / 0.35);
+    border-left: 3px solid rgba(122 162 247 / 0.7);
+    border-radius: 6px;
+    background: rgba(122 162 247 / 0.07);
+    font-size: 0.9em;
+    opacity: 0.85;
+}
+
+details.cmcc > summary {
+    cursor: pointer;
+    padding: 5px 9px;
+    font-weight: bold;
+    color: #b9cdff;
+    user-select: none;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+details.cmcc > summary::before {
+    content: '▸';
+    flex: 0 0 auto;
+    opacity: 0.7;
+}
+
+details.cmcc[open] > summary::before { content: '▾'; }
+
+details.cmcc > summary::-webkit-details-marker { display: none; }
+
+details.cmcc > summary:hover {
+    background: rgba(122 162 247 / 0.12);
+    border-radius: 5px;
+}
+
+details.cmcc > summary::after {
+    content: attr(data-hint);
+    font-weight: normal;
+    font-size: 0.82em;
+    opacity: 0.55;
+    margin-left: auto;
+}
+
+/* 展开后的内容区 */
+details.cmcc > *:not(summary) {
+    padding: 0 9px;
+}
+
+details.cmcc[open] > *:not(summary):last-child {
+    padding-bottom: 7px;
+}

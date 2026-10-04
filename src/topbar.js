@@ -55,8 +55,10 @@ export function expandKey(key) { COLLAPSED.delete(key); }
 let SELECT_MODE = false;
 /** 已勾选的记忆，键形如 'w\u0000s\u00003'（世界+存档+下标），跨存档全局唯一 */
 const SELECTED = new Set();
-/** 已勾选的**整个世界**（世界 key），删的时候整个一起删 */
+/** 已勾选的整个世界（世界 key），删的时候整个一起删 */
 const SELECTED_WORLDS = new Set();
+/** 已勾选的整个存档，键形如 'w\u0000s' */
+const SELECTED_SAVES = new Set();
 
 /** 组合一条记忆的唯一键 */
 function entryKey(wKey, sKey, idx) {
@@ -488,15 +490,18 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
     bSelToggle.title = SELECT_MODE ? '退出多选模式' : '勾选多条记忆一起删';
     bSelToggle.onclick = () => {
         SELECT_MODE = !SELECT_MODE;
-        if (!SELECT_MODE) { SELECTED.clear(); SELECTED_WORLDS.clear(); }
+        if (!SELECT_MODE) { SELECTED.clear(); SELECTED_SAVES.clear(); SELECTED_WORLDS.clear(); }
         renderTopPanel({ ctx, api, onGotoSettings });
     };
     selBar.appendChild(bSelToggle);
 
     if (SELECT_MODE) {
         const wN = SELECTED_WORLDS.size;
+        const sN = SELECTED_SAVES.size;
         selBar.appendChild(el('span', 'cmcc-meta',
-            `已选 ${SELECTED.size} 条` + (wN ? ` + ${wN} 个世界` : '')));
+            `已选 ${SELECTED.size} 条`
+            + (sN ? ` + ${sN} 个存档` : '')
+            + (wN ? ` + ${wN} 个世界` : '')));
 
         const bAll = el('button', 'menu_button cmcc-mini', '全选当前');
         bAll.title = '勾选当前世界里的全部记忆';
@@ -514,19 +519,21 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
         const bNone = el('button', 'menu_button cmcc-mini', '清空勾选');
         bNone.onclick = () => {
             SELECTED.clear();
+            SELECTED_SAVES.clear();
             SELECTED_WORLDS.clear();
             renderTopPanel({ ctx, api, onGotoSettings });
         };
         selBar.appendChild(bNone);
 
-        const totalSel = SELECTED.size + SELECTED_WORLDS.size;
+        const totalSel = SELECTED.size + SELECTED_SAVES.size + SELECTED_WORLDS.size;
         const bDel = el('button', 'menu_button cmcc-mini cmcc-danger',
-            wN ? `删除选中的 ${totalSel} 项` : `删除选中的 ${SELECTED.size} 条`);
+            (sN || wN) ? `删除选中的 ${totalSel} 项` : `删除选中的 ${SELECTED.size} 条`);
         bDel.disabled = totalSel === 0;
         bDel.onclick = async () => {
             if (!totalSel) return;
             const desc = [
                 SELECTED.size ? `${SELECTED.size} 条记忆` : '',
+                sN ? `${sN} 个存档（含其全部记忆）` : '',
                 wN ? `${wN} 个世界（含其全部存档）` : '',
             ].filter(Boolean).join(' + ');
             const ok = await ctx.callGenericPopup(
@@ -535,15 +542,26 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
 
             let total = 0;
             // ① 先删勾选的整个世界
-            for (const wk of SELECTED_WORLDS) {
+            const deadWorlds = new Set(SELECTED_WORLDS);
+            for (const wk of deadWorlds) {
                 const r = await api.deleteByScope('currentWorld', wk);
                 total += r.deleted;
             }
-            // ② 再删勾选的零散记忆（跳过已被整个删掉的世界）
+            // ② 再删勾选的整个存档（跳过已被删世界里的）
+            const deadSaves = new Set();
+            for (const k of SELECTED_SAVES) {
+                const [w, sk] = k.split('\u0000');
+                if (deadWorlds.has(w)) continue;
+                deadSaves.add(k);
+                const r = await api.deleteByScope('save', w, sk);
+                total += r.deleted;
+            }
+            // ③ 最后删勾选的零散记忆（跳过已删的世界/存档）
             const groups = new Map();
             for (const k of SELECTED) {
                 const [w, s, i] = parseEntryKey(k);
-                if (SELECTED_WORLDS.has(w)) continue;
+                if (deadWorlds.has(w)) continue;
+                if (deadSaves.has(w + '\u0000' + s)) continue;
                 const gk = w + '\u0000' + s;
                 if (!groups.has(gk)) groups.set(gk, { w, s, idx: [] });
                 groups.get(gk).idx.push(i);
@@ -552,11 +570,15 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
                 total += await api.deleteMemories(w, s, idx);
             }
 
-            const wCount = SELECTED_WORLDS.size;
+            const extra = [
+                deadSaves.size ? `${deadSaves.size} 个存档` : '',
+                deadWorlds.size ? `${deadWorlds.size} 个世界` : '',
+            ].filter(Boolean).join(' + ');
             SELECTED.clear();
+            SELECTED_SAVES.clear();
             SELECTED_WORLDS.clear();
             ctx.toastr?.success?.(
-                `已删除 ${total} 条记忆` + (wCount ? `（含 ${wCount} 个世界）` : ''));
+                `已删除 ${total} 条记忆` + (extra ? `（含 ${extra}）` : ''));
             renderTopPanel({ ctx, api, onGotoSettings });
         };
         selBar.appendChild(bDel);
@@ -714,6 +736,21 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
             const sd = el('div', 'cmcc-save');
             const sh = el('div', 'cmcc-save-head');
             sh.appendChild(el('span', 'cmcc-chev', sCollapsed ? '▸' : '▾'));
+            // 多选模式下，整个存档可以被勾选
+            if (SELECT_MODE) {
+                const scb = document.createElement('input');
+                scb.type = 'checkbox';
+                scb.className = 'cmcc-check cmcc-save-check';
+                scb.checked = SELECTED_SAVES.has(sKeyId);
+                scb.title = '勾选这个存档（删除时删掉它下面全部记忆）';
+                scb.onclick = (ev) => ev.stopPropagation();
+                scb.onchange = () => {
+                    if (scb.checked) SELECTED_SAVES.add(sKeyId);
+                    else SELECTED_SAVES.delete(sKeyId);
+                    renderTopPanel({ ctx, api, onGotoSettings });
+                };
+                sh.appendChild(scb);
+            }
             sh.appendChild(el('span', 'cmcc-lv cmcc-lv2', 'L2'));
             sh.appendChild(el('span', 'cmcc-lvname', '存档'));
             const st = el('span', 'cmcc-save-title', s.label);
@@ -739,6 +776,7 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
             sh.appendChild(del);
             sh.onclick = () => { toggleCollapsed(sKeyId); renderTopPanel({ ctx, api, onGotoSettings }); };
             sh.title = '点击展开 / 收起';
+            if (SELECT_MODE && SELECTED_SAVES.has(sKeyId)) sd.classList.add('cmcc-picked');
             sd.appendChild(sh);
 
             if (!sCollapsed) {

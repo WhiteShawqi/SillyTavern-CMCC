@@ -61,7 +61,11 @@ chk(worldKey({ avatar: 'a.png' }) === 'char:a.png', '角色卡世界键');
 chk(worldKey({ groupId: 'g1' }) === 'group:g1', '群聊世界键');
 chk(worldLabel({ charName: '全球冰封' }) === '全球冰封', '世界标签');
 chk(saveKey('chat-1') === 'chat-1', '存档键');
-chk(saveKey('') === 'default', '无 chatId 兜底');
+chk(saveKey('') === null, '★ 无 chatId 返回 null（不再建 default 存档）');
+chk(saveKey(null) === null, 'null chatId → null');
+chk(saveKey('   ') === null, '★ 纯空白 → null');
+chk(saveKey('chat-1') === 'chat-1', '有效 chatId 正常返回');
+chk(saveKey(123) === '123', '数字也转成字符串');
 console.log('');
 
 // ── 2. 记忆模型 ──
@@ -665,6 +669,53 @@ chk(pe.saves >= 1, '★ 清掉了空存档（' + pe.saves + ' 个）');
 const kept = Object.keys(m['char:A'].saves);
 chk(!kept.includes('空存档'), '空存档没了');
 chk(kept.includes('s1') && kept.includes('s2') && kept.includes(CH), '有内容的都留着');
+console.log('');
+
+
+// ── 21. <details> 记忆块（新格式，美化用）──
+console.log('【21】details 记忆块');
+const D = (inner) => '<details class="cmcc"><summary>本次记忆</summary>\n'
+    + inner + '\n</details>';
+
+const dtext = '正文写完了。\n\n'
+    + D('+save|event|在避难所里冻了一夜\n+shared|rel|她答应不再让你一个人走夜路');
+const db = extractBlocks(dtext);
+chk(db.length === 1, '★ 从 <details class="cmcc"> 里抽出一个块');
+chk(db[0].includes('避难所'), '块内容正确');
+
+const dp = parseMemoryCommands(dtext);
+chk(dp.blockCount === 1, '整段：认出 1 个 details 块');
+chk(dp.entries.length === 2, '★ details 块里解析出 2 条');
+chk(dp.entries[0].scope === 'save', '第一条 scope 对');
+chk(dp.entries[1].scope === 'shared', '第二条 scope 对');
+chk(dp.entries[0].text === '在避难所里冻了一夜', '★ <summary> 没被当成记忆内容');
+
+// 保留旧格式兼容
+const oldFmt = 'x\n```cmcc\n+save|event|旧格式\n```';
+chk(parseMemoryCommands(oldFmt).entries.length === 1, '★ 旧的 ```cmcc 仍然认');
+
+// 两种混用
+const mixed = D('+save|event|新的') + '\n```cmcc\n+save|event|旧的\n```';
+chk(parseMemoryCommands(mixed).entries.length === 2, '★ 新旧格式混用都能抽到');
+
+// stripBlocks 也能去 details
+const stD = stripBlocks(dtext);
+chk(!stD.includes('cmcc'), '★ stripBlocks 去掉 details 块');
+chk(stD.includes('正文写完了'), 'stripBlocks 保留正文');
+chk(stripBlocks('<details class="other">x</details>').includes('other'),
+    'stripBlocks 不动别的 details');
+
+// HTML 包装容错
+chk(parseBlock('<p>+save|event|带p标签</p>').entries.length === 1,
+    '★ 行里带 HTML 标签也能解析');
+chk(parseBlock('<p>+save|event|带p标签</p>').entries[0].text === '带p标签',
+    '标签被清掉');
+
+// commandSpec 用新格式
+const sp = commandSpec();
+chk(sp.includes('<details'), '★ 格式说明用 details');
+chk(sp.includes('本次记忆'), '格式说明含 summary 标题');
+chk(sp.includes('不要用 world'), '★ 格式说明明确禁用 world 范围');
 console.log('');
 
 console.log(fail === 0 ? `✓ 全部通过 (${pass} 项)` : `❌ 失败 ${fail} 项 / 共 ${pass + fail} 项`);

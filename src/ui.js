@@ -70,41 +70,61 @@ export function renderPanel(o) {
      *   · 不用猜高度，内容多高都行
      * 为什么不用纯 CSS 的 grid 0fr/1fr：收起正常，但展开时算不回固有高度。
      */
+    /** 量内容真实高度（先把 max-height 放开，否则可能量到 0） */
+    function measureInner() {
+        const prev = content.style.maxHeight;
+        content.style.maxHeight = 'none';
+        const h = Math.max(
+            inner.scrollHeight || 0,
+            inner.offsetHeight || 0,
+            content.scrollHeight || 0,
+        );
+        content.style.maxHeight = prev;   // 还原（下一行会立刻重设）
+        return h;
+    }
+
+    /**
+     * 展开 / 收起
+     *
+     * ⚠ 踩过的坑：展开时若先把 max-height 设成 0px 再读 inner.scrollHeight，
+     *   容器已被压到 0，量出来还是 0 → 永远展不开（表现为"点了没反应"）。
+     *   所以必须先放开限制再量。另外加最小高度兜底，宁可多留白也不能展不开。
+     */
     const applyExpand = (open) => {
         SETTINGS_EXPANDED = open;
         if (open) {
             chev.classList.remove('down', 'fa-circle-chevron-down');
             chev.classList.add('up', 'fa-circle-chevron-up');
+            content.style.display = 'block';
             if (!content.classList.contains('cmcc-animated')) {
-                // 未启用过渡（首屏 / 恢复状态）：直接显示，不播动画
-                content.style.display = 'block';
+                // 未启用过渡（首屏 / 恢复状态）：直接放开，不播动画
                 content.style.maxHeight = '';
-            } else {
-                content.style.display = 'block';
-                content.style.maxHeight = '0px';
-                void content.offsetHeight;                    // 落实起点
-                content.style.maxHeight = (inner.scrollHeight + 8) + 'px';
-                // 过渡结束后放开限制，免得内容长高了被卡住
-                clearTimeout(content._cmccT);
-                content._cmccT = setTimeout(() => {
-                    if (SETTINGS_EXPANDED) content.style.maxHeight = '';
-                }, 260);
+                return;
             }
+            const target = Math.max(60, measureInner() + 8);
+            content.style.maxHeight = '0px';      // 起点
+            void content.offsetHeight;            // 让浏览器认下起点
+            content.style.maxHeight = target + 'px';
+            clearTimeout(content._cmccT);
+            content._cmccT = setTimeout(() => {
+                // 过渡结束后放开限制，免得内容长高了被卡住
+                if (SETTINGS_EXPANDED) content.style.maxHeight = '';
+            }, 300);
         } else {
             chev.classList.remove('up', 'fa-circle-chevron-up');
             chev.classList.add('down', 'fa-circle-chevron-down');
             if (!content.classList.contains('cmcc-animated')) {
                 content.style.display = 'none';
-            } else {
-                // scrollHeight 不含内边距，收起时要把它一起算进去，
-                // 否则会残留内边距那么高（实测约 6px）
-                const cs = getComputedStyle(content);
-                const pad = (parseFloat(cs.paddingTop) || 0)
-                          + (parseFloat(cs.paddingBottom) || 0);
-                content.style.maxHeight = (content.scrollHeight + pad) + 'px';
-                void content.offsetHeight;
-                content.style.maxHeight = '0px';
+                return;
             }
+            // 收起：先量出当前高度当起点，再压到 0
+            const cs = getComputedStyle(content);
+            const pad = (parseFloat(cs.paddingTop) || 0)
+                      + (parseFloat(cs.paddingBottom) || 0);
+            const h = Math.max(measureInner() + pad, 60);
+            content.style.maxHeight = h + 'px';
+            void content.offsetHeight;
+            content.style.maxHeight = '0px';
         }
     };
     const toggleHandler = () => {
@@ -116,6 +136,19 @@ export function renderPanel(o) {
             void content.offsetHeight;
         }
         applyExpand(!SETTINGS_EXPANDED);
+
+        // 兜底：展开后若量到高度仍为 0，直接放开限制。
+        // 宁可没有动画，也不能"点了没反应"。
+        if (SETTINGS_EXPANDED) {
+            setTimeout(() => {
+                if (!SETTINGS_EXPANDED) return;
+                if (content.getBoundingClientRect().height < 10) {
+                    content.style.display = 'block';
+                    content.style.maxHeight = '';
+                    console.warn('[CMCC] 设置页展开高度异常，已强制放开 max-height');
+                }
+            }, 320);
+        }
     };
     toggle.addEventListener('click', toggleHandler);
 

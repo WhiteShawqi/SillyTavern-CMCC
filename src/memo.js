@@ -49,7 +49,15 @@ const OP_ADD = new Set(['+', 'add', '', '+save', '+world', '+shared']);
 export function extractBlocks(text) {
     if (!text || typeof text !== 'string') return [];
     const out = [];
-    // ```lang\n ... \n```
+
+    // ① 首选：HTML 折叠块 <details class="cmcc">…</details>
+    //    它的好处是渲染成可折叠卡片（美观看得见），又能随时展开查看，
+    //    比代码块干净 —— 代码块在酒馆里就是一大段等宽文字。
+    const dre = /<details[^>]*\bcmcc\b[^>]*>([\s\S]*?)<\/details>/gi;
+    let d;
+    while ((d = dre.exec(text)) !== null) out.push(d[1]);
+
+    // ② 兼容：```cmcc 代码块（旧格式，AI 可能还在用）
     const re = /```([^\n`]*)\n([\s\S]*?)```/g;
     let m;
     while ((m = re.exec(text)) !== null) {
@@ -61,8 +69,11 @@ export function extractBlocks(text) {
 /** 去掉正文里的 cmcc 代码块（备用：若用户没装正则） */
 export function stripBlocks(text) {
     if (!text || typeof text !== 'string') return text;
-    return text.replace(/```([^\n`]*)\n[\s\S]*?```/g, (whole, lang) =>
-        (LANG_RE.test(lang) ? '' : whole)).replace(/\n{3,}/g, '\n\n').trim();
+    return text
+        .replace(/<details[^>]*\bcmcc\b[^>]*>[\s\S]*?<\/details>/gi, '')
+        .replace(/```([^\n`]*)\n[\s\S]*?```/g, (whole, lang) =>
+            (LANG_RE.test(lang) ? '' : whole))
+        .replace(/\n{3,}/g, '\n\n').trim();
 }
 
 /** 单条记忆的规范化 */
@@ -85,7 +96,9 @@ function normalizeEntry(raw) {
 export function parseBlock(content) {
     const errors = [];
     const entries = [];
-    const body = String(content || '').trim();
+    let body = String(content || '').trim();
+    // 若块里带了 <summary>标题</summary>，去掉它 —— 标题不是记忆内容
+    body = body.replace(/<summary[^>]*>[\s\S]*?<\/summary>/gi, '').trim();
     if (!body) return { entries, errors };
 
     // ── 试 JSON ──
@@ -118,7 +131,9 @@ export function parseBlock(content) {
 
     // ── 行式 ──
     for (const rawLine of body.split('\n')) {
-        const line = rawLine.trim();
+        let line = rawLine.trim();
+        // 去掉可能的 HTML 包装（AI 有时会多包一层 <p> / <br>）
+        line = line.replace(/<\/?[a-z][^>]*>/gi, '').replace(/&nbsp;/gi, ' ').trim();
         if (!line || line.startsWith('#') || line.startsWith('//')) continue;
         // 允许前置 "+" 或 "-"（忽略），然后 scope|kind|text
         let s = line;
@@ -176,20 +191,23 @@ export function commandSpec() {
     return [
         '【每次生成正文后，在最后追加一个记忆块】',
         '',
-        '格式（严格照抄，用三个反引号包住，语言标记写 cmcc）：',
+        '格式（严格照抄，这是一个可折叠的 HTML 块）：',
         '',
-        '```cmcc',
-        '+save|event|这一节里真正发生、你希望记住的事',
-        '+world|fact|关于这个世界、以后还用得上的设定',
+        '<details class="cmcc"><summary>本次记忆</summary>',
+        '',
+        '+save|event|这一节里真正发生、你希望记住的事（30~50 字，写清谁在哪做了什么）',
+        '+save|event|另一件事',
         '+shared|rel|跨越所有世界都成立的事（比如你和 {user} 的关系）',
-        '```',
+        '',
+        '</details>',
         '',
         '规则：',
         '- 只在**确实有值得记的事**时才输出这个块；没有就不输出（不要硬凑）。',
         '- 每行一条，格式 `+范围|类型|内容`。',
-        '- 范围三选一：`save`＝只属于当前这一次；`world`＝整个当前世界通用；`shared`＝所有世界通用。',
+        '- 范围二选一：`save`＝只属于当前这一次；`shared`＝所有世界通用。',
+        '  （**不要用 world 范围** —— 它已取消，写了也当 save 处理。）',
         '- 类型随便填一个短词（event / fact / rel / pref），只作分类。',
-        '- 内容写成**你自己的一句话**，不要写"用户说""AI 认为"。',
+        '- 内容写成**你自己的一句话**，30~50 字，要有具体细节，不要写空话。',
         '- 一次最多 5 条，只写重要的，不要复述整段剧情。',
         '- 这个块是给你自己留的备忘，正文里**不要提到它**。',
     ].join('\n');
