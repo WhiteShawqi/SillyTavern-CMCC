@@ -24,6 +24,25 @@ let RENDER_HOOK = null;
 export function setRenderHook(fn) { RENDER_HOOK = fn; }
 
 /**
+ * 记忆列表的折叠状态（模块级，重渲染后保持）
+ * 键形如 'w:char:x.png' / 's:char:x.png|存档1'
+ * 集合里存在 = **已收起**
+ *
+ * 设计：**默认全部展开**，只有用户点了才收起。
+ * （试过"首次自动只展开当前项"，但那会导致重渲染时展开状态莫名其妙变化，
+ *   用户会以为界面在乱跳 —— 保持简单可预测更好。想要精简视图用「只看当前」。）
+ */
+const COLLAPSED = new Set();
+
+function toggleCollapsed(key) {
+    if (COLLAPSED.has(key)) COLLAPSED.delete(key);
+    else COLLAPSED.add(key);
+}
+
+/** 展开某个键 */
+export function expandKey(key) { COLLAPSED.delete(key); }
+
+/**
  * 判断记忆世界书是否已挂载（全局选中 或 当前角色的附加世界书）
  * ST 只读「外部世界书文件」，卡内嵌的不生效 —— 所以要提醒用户挂载。
  */
@@ -464,6 +483,21 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
         return ul;
     }
 
+    /** 「+ 加一条」按钮（存档记忆与世界级记忆共用） */
+    function makeAddRow(wKey, sKey, prompt) {
+        const addRow = el('div', 'cmcc-add');
+        const addBtn = el('button', 'menu_button cmcc-mini', '+ 加一条');
+        addBtn.onclick = async () => {
+            const v = await ctx.callGenericPopup(prompt || '新增一条记忆：', ctx.POPUP_TYPE.INPUT, '');
+            if (v) {
+                await api.addMemory(wKey, sKey, v);
+                renderTopPanel({ ctx, api, onGotoSettings });
+            }
+        };
+        addRow.appendChild(addBtn);
+        return addRow;
+    }
+
     memBox.appendChild(el('div', 'cmcc-now',
         `当前位置：<b>${cur.wLabel || '—'}</b>`));
 
@@ -473,40 +507,65 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
 
     for (const w of snap.stats.worlds.slice(0, 10)) {
         const card = el('div', 'cmcc-world' + (w.key === cur.wKey ? ' cmcc-cur' : ''));
+        const wKeyId = 'w:' + w.key;
+        const wCollapsed = COLLAPSED.has(wKeyId);
 
         const wh = el('div', 'cmcc-world-head');
-        const wt = el('span', 'cmcc-world-title', (w.key === cur.wKey ? '▶ ' : '') + w.label);
+        const wchev = el('span', 'cmcc-chev', wCollapsed ? '▸' : '▾');
+        wh.appendChild(wchev);
+        const wt = el('span', 'cmcc-world-title',
+            (w.key === cur.wKey ? '▶ ' : '') + w.label);
         wt.title = '点击改名';
-        wt.onclick = async () => {
+        wt.onclick = async (ev) => {
+            ev.stopPropagation();
             const v = await ctx.callGenericPopup('重命名这个世界：', ctx.POPUP_TYPE.INPUT, w.label);
             if (v) { await api.renameWorld(w.key, v); renderTopPanel({ ctx, api, onGotoSettings }); }
         };
         wh.appendChild(wt);
         wh.appendChild(el('span', 'cmcc-meta', `${w.saveCount} 次 / ${w.count} 条`));
+        // 点标题行任意处折叠/展开
+        wh.onclick = () => { toggleCollapsed(wKeyId); renderTopPanel({ ctx, api, onGotoSettings }); };
+        wh.title = '点击展开 / 收起';
         card.appendChild(wh);
+
+        if (wCollapsed) {
+            memBox.appendChild(card);   // 收起：只留标题行
+            continue;
+        }
 
         // ── 世界级记忆（整个世界通用，换存档也记得）──
         // 它们存在 __world__ 通道里，不是一个「存档」，要单独展示，
         // 否则用户既看不到也改不了（曾经的 bug）。
         if (w.worldEntryCount) {
+            const wKeyId2 = 's:' + w.key + '|' + WORLDBOOK_CHANNEL;
             const wsd = el('div', 'cmcc-save cmcc-save-world');
             const wsh = el('div', 'cmcc-save-head');
+            wsh.appendChild(el('span', 'cmcc-chev', COLLAPSED.has(wKeyId2) ? '▸' : '▾'));
             const wst = el('span', 'cmcc-save-title', '· 整个世界都成立');
             wst.title = '换哪一次存档都记得的事（world 范围）';
             wsh.appendChild(wst);
             wsh.appendChild(el('span', 'cmcc-meta', `${w.worldEntryCount} 条`));
+            wsh.onclick = () => { toggleCollapsed(wKeyId2); renderTopPanel({ ctx, api, onGotoSettings }); };
+            wsh.title = '点击展开 / 收起';
             wsd.appendChild(wsh);
-            wsd.appendChild(renderEntries(w.key, WORLDBOOK_CHANNEL,
-                snap.worlds?.[w.key]?.saves?.[WORLDBOOK_CHANNEL]?.entries || []));
+            if (!COLLAPSED.has(wKeyId2)) {
+                wsd.appendChild(renderEntries(w.key, WORLDBOOK_CHANNEL,
+                    snap.worlds?.[w.key]?.saves?.[WORLDBOOK_CHANNEL]?.entries || []));
+                wsd.appendChild(makeAddRow(w.key, WORLDBOOK_CHANNEL, '新增一条「整个世界通用」的记忆：'));
+            }
             card.appendChild(wsd);
         }
 
         for (const s of w.saves) {
+            const sKeyId = 's:' + w.key + '|' + s.key;
+            const sCollapsed = COLLAPSED.has(sKeyId);
             const sd = el('div', 'cmcc-save');
             const sh = el('div', 'cmcc-save-head');
+            sh.appendChild(el('span', 'cmcc-chev', sCollapsed ? '▸' : '▾'));
             const st = el('span', 'cmcc-save-title', s.label);
             st.title = '点击改名';
-            st.onclick = async () => {
+            st.onclick = async (ev) => {
+                ev.stopPropagation();
                 const v = await ctx.callGenericPopup('重命名这次经历：', ctx.POPUP_TYPE.INPUT, s.label);
                 if (v) { await api.renameSave(w.key, s.key, v); renderTopPanel({ ctx, api, onGotoSettings }); }
             };
@@ -514,25 +573,22 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
             sh.appendChild(el('span', 'cmcc-meta', `${s.count} 条`));
             const del = el('button', 'cmcc-x', '×');
             del.title = '删除这次经历的全部记忆';
-            del.onclick = async () => {
+            del.onclick = async (ev) => {
+                ev.stopPropagation();
                 const ok = await ctx.callGenericPopup(
                     `确定删除「${w.label} / ${s.label}」的全部记忆？`, ctx.POPUP_TYPE.CONFIRM);
                 if (ok) { await api.deleteSave(w.key, s.key); renderTopPanel({ ctx, api, onGotoSettings }); }
             };
             sh.appendChild(del);
+            sh.onclick = () => { toggleCollapsed(sKeyId); renderTopPanel({ ctx, api, onGotoSettings }); };
+            sh.title = '点击展开 / 收起';
             sd.appendChild(sh);
 
-            const entries = snap.worlds?.[w.key]?.saves?.[s.key]?.entries || [];
-            sd.appendChild(renderEntries(w.key, s.key, entries));
-
-            const addRow = el('div', 'cmcc-add');
-            const addBtn = el('button', 'menu_button cmcc-mini', '+ 加一条');
-            addBtn.onclick = async () => {
-                const v = await ctx.callGenericPopup('新增一条记忆：', ctx.POPUP_TYPE.INPUT, '');
-                if (v) { await api.addMemory(w.key, s.key, v); renderTopPanel({ ctx, api, onGotoSettings }); }
-            };
-            addRow.appendChild(addBtn);
-            sd.appendChild(addRow);
+            if (!sCollapsed) {
+                const entries = snap.worlds?.[w.key]?.saves?.[s.key]?.entries || [];
+                sd.appendChild(renderEntries(w.key, s.key, entries));
+                sd.appendChild(makeAddRow(w.key, s.key, '新增一条记忆：'));
+            }
 
             card.appendChild(sd);
         }
@@ -549,6 +605,31 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
         return b;
     };
     tools.appendChild(mk('整理记忆', () => api.summarize(true), '立刻整理一次'));
+    tools.appendChild(mk('全部展开', () => {
+        COLLAPSED.clear();
+        renderTopPanel({ ctx, api, onGotoSettings });
+    }, '展开所有世界与存档'));
+    tools.appendChild(mk('全部收起', () => {
+        for (const w of snap.stats.worlds) {
+            COLLAPSED.add('w:' + w.key);
+            for (const s of w.saves) COLLAPSED.add('s:' + w.key + '|' + s.key);
+            if (w.worldEntryCount) COLLAPSED.add('s:' + w.key + '|' + WORLDBOOK_CHANNEL);
+        }
+        renderTopPanel({ ctx, api, onGotoSettings });
+    }, '收起所有世界与存档'));
+    tools.appendChild(mk('只看当前', () => {
+        COLLAPSED.clear();
+        for (const w of snap.stats.worlds) {
+            if (w.key !== cur.wKey) COLLAPSED.add('w:' + w.key);
+            for (const s of w.saves) {
+                if (w.key !== cur.wKey || s.key !== cur.sKey) {
+                    COLLAPSED.add('s:' + w.key + '|' + s.key);
+                }
+            }
+            if (w.worldEntryCount) COLLAPSED.add('s:' + w.key + '|' + WORLDBOOK_CHANNEL);
+        }
+        renderTopPanel({ ctx, api, onGotoSettings });
+    }, '只展开当前世界与当前存档'));
     tools.appendChild(mk('打开世界书', () => {
         try {
             if (typeof ctx.openWorldInfoEditor === 'function') ctx.openWorldInfoEditor('CMCC-记忆库');

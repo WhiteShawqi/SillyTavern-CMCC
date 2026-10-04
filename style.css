@@ -529,3 +529,25 @@
     color: #d9a441;
     font-style: italic;
 }
+
+/* 折叠箭头（世界 / 存档标题行） */
+.cmcc-chev {
+    flex: 0 0 auto;
+    width: 1em;
+    opacity: 0.55;
+    font-size: 0.9em;
+    text-align: center;
+    user-select: none;
+}
+
+.cmcc-world-head,
+.cmcc-save-head {
+    cursor: pointer;
+    user-select: none;
+}
+
+.cmcc-world-head:hover .cmcc-chev,
+.cmcc-save-head:hover .cmcc-chev { opacity: 1; }
+
+.cmcc-world-head:hover,
+.cmcc-save-head:hover { background: rgba(127 127 127 / 0.08); }

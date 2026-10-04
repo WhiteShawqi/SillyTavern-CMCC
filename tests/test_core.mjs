@@ -527,5 +527,25 @@ chk(bst.sharedCount === 1, '共同记忆单独计数');
 chk(!bst.worlds.some((w) => w.key === '__shared__'), '世界列表里没有 __shared__');
 console.log('');
 
+
+// ── 17. 复刻真实数据：次数 ≠ 条数（截图回归）──
+console.log('【17】次数与条数不能混');
+// 真实案例：仙子堕落记2.1.1 MVU，4 个存档 + 1 条世界级记忆
+const realW = emptyWorld('仙子堕落记2.1.1 MVU');
+ensureSave(realW, WORLDBOOK_CHANNEL, '整个世界');
+addMemory(realW, WORLDBOOK_CHANNEL, '青芜宗药母白芷对极品活首有着细致照料', 'world');
+for (const k of ['存档1', '存档2', '存档5', '存档6']) {
+    ensureSave(realW, k, k);
+    addMemory(realW, k, '某事', 'memo');
+}
+const rst = worldStats(realW);
+chk(Object.keys(realW.saves).length === 5, '底层有 5 个键（4 存档 + 1 世界通道）');
+chk(rst.saveCount === 4, '★ 显示的是「4 次」，不是 5 次（世界通道不算存档）');
+chk(rst.count === 5, '总条数 5 条（世界级条目仍计入这个世界）');
+chk(rst.worldEntryCount === 1, '世界级 1 条');
+chk(rst.saves.length === 4, '存档列表 4 项');
+chk(rst.saves.every((x) => x.key !== WORLDBOOK_CHANNEL), '存档列表里没有世界通道');
+console.log('');
+
 console.log(fail === 0 ? `✓ 全部通过 (${pass} 项)` : `❌ 失败 ${fail} 项 / 共 ${pass + fail} 项`);
 process.exit(fail ? 1 : 0);

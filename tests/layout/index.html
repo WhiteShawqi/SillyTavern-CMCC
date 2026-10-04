@@ -209,6 +209,31 @@ function measure() {
         okDisplay: cs.display === 'block',
         okPosition: cs.position === 'absolute',
         openState: isTopPanelOpen(),
+        // ★ 折叠交互：默认全部展开 → 点一下收起（条目变少）→ 再点展开（完全恢复）
+        collapseWorks: (() => {
+            const body = document.getElementById('cmcc-top-panel_body');
+            const count = () => body.querySelectorAll('.cmcc-entry').length;
+            const expandedHead = () => [...body.querySelectorAll('.cmcc-save-head')]
+                .find(h => h.querySelector('.cmcc-chev')?.textContent.trim() === '▾');
+            const collapsedHead = () => [...body.querySelectorAll('.cmcc-save-head')]
+                .find(h => h.querySelector('.cmcc-chev')?.textContent.trim() === '▸');
+
+            const before = count();
+            const h1 = expandedHead();
+            if (!h1) return { error: 'NO_EXPANDED_HEAD', before };
+            h1.click();
+            const afterCollapse = count();
+            const h2 = collapsedHead();
+            if (!h2) return { error: 'NO_COLLAPSED_HEAD', before, afterCollapse };
+            h2.click();
+            const afterRestore = count();
+            return {
+                before, afterCollapse, afterRestore,
+                collapsedOk: afterCollapse < before,
+                restoredOk: afterRestore === before,
+            };
+        })(),
+        chevCount: document.querySelectorAll('#cmcc-top-panel_body .cmcc-chev').length,
         // ★ 世界级记忆区块是否显示出来
         worldSectionShown: !!document.querySelector('#cmcc-top-panel_body .cmcc-save-world'),
         worldSectionText: (document.querySelector('#cmcc-top-panel_body .cmcc-save-world')?.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80),
