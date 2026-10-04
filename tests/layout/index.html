@@ -209,6 +209,8 @@ function measure() {
         okDisplay: cs.display === 'block',
         okPosition: cs.position === 'absolute',
         openState: isTopPanelOpen(),
+        metaLabels: [...document.querySelectorAll('#cmcc-top-panel_body .cmcc-meta')]
+            .map(e => e.textContent.trim()).slice(0, 6),
         // ★ 折叠交互：默认全部展开 → 点一下收起（条目变少）→ 再点展开（完全恢复）
         collapseWorks: (() => {
             const body = document.getElementById('cmcc-top-panel_body');

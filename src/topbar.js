@@ -19,6 +19,16 @@ const DRAWER_ID = 'cmcc-top-drawer';
 const PANEL_ID = 'cmcc-top-panel';
 const LOG_TAG = '[CMCC]';
 
+/**
+ * 「弹窗类」元素选择器 —— 这些挂在面板外面，点它们不算「点面板外」
+ * （否则 callGenericPopup 的取消按钮会把整个抽屉关掉）
+ */
+const POPUP_SELECTOR = [
+    '.popup', '#movingDivs', '.dialogue_popup', '.popup_body',
+    '.toast', '#toast-container', '.select2-container',
+    '.ui-dialog', '.swal2-container', '#character_popup',
+].join(',');
+
 /** 重渲染钩子：由 index.js 注册（避免 topbar 反向依赖 index） */
 let RENDER_HOOK = null;
 export function setRenderHook(fn) { RENDER_HOOK = fn; }
@@ -168,14 +178,20 @@ export function mountTopDrawer() {
     document.addEventListener('mousedown', (ev) => {
         if (!isTopPanelOpen()) return;
         const t = ev.target;
+        if (!t || typeof t.closest !== 'function') return;
         if (drawer.contains(t)) return;          // 点自己面板：不关
-        if (t?.closest?.('#' + DRAWER_ID)) return;
+        if (t.closest('#' + DRAWER_ID)) return;
+        // ⚠ 弹窗（callGenericPopup / toastr / 下拉）挂在面板**外面**，
+        //   点它的「取消」不该把整个抽屉收起来（曾经的 bug）。
+        if (t.closest(POPUP_SELECTOR)) return;
         closeDrawer();                            // 点任何其它地方都收起
     });
-    // Esc 也能收起
+    // Esc：有弹窗时让弹窗自己处理，别抢
     document.addEventListener('keydown', (ev) => {
         if (!isTopPanelOpen()) return;
-        if (ev.key === 'Escape') closeDrawer();
+        if (ev.key !== 'Escape') return;
+        if (document.querySelector(POPUP_SELECTOR)) return;
+        closeDrawer();
     });
 }
 
@@ -434,7 +450,10 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
     // ── 记忆 ──
     const memBox = el('div', 'cmcc-top-section');
     const mh = el('div', 'cmcc-top-sec-head');
-    mh.innerHTML = `<b>记忆</b><span class="cmcc-meta">${snap.stats.worldCount} 个世界 / ${snap.stats.totalEntries} 条</span>`;
+    mh.innerHTML = `<b>记忆</b>`
+        + `<span class="cmcc-meta">${snap.stats.worldCount} 个世界 · `
+        + `${snap.stats.totalEntries} 条记忆</span>`;
+    mh.title = '一个「存档」= 一个聊天记录；一条记忆 = 一件事';
     const reloadM = el('button', 'cmcc-x', '⟳');
     mh.appendChild(reloadM);
     reloadM.title = '从世界书重新载入';
@@ -522,7 +541,9 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
             if (v) { await api.renameWorld(w.key, v); renderTopPanel({ ctx, api, onGotoSettings }); }
         };
         wh.appendChild(wt);
-        wh.appendChild(el('span', 'cmcc-meta', `${w.saveCount} 次 / ${w.count} 条`));
+        // 一个「存档」= 一个聊天记录（不是一次生成）；「条」= 一条记忆
+        wh.appendChild(el('span', 'cmcc-meta',
+            `${w.saveCount} 个存档 · ${w.count} 条记忆`));
         // 点标题行任意处折叠/展开
         wh.onclick = () => { toggleCollapsed(wKeyId); renderTopPanel({ ctx, api, onGotoSettings }); };
         wh.title = '点击展开 / 收起';
@@ -544,7 +565,7 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
             const wst = el('span', 'cmcc-save-title', '· 整个世界都成立');
             wst.title = '换哪一次存档都记得的事（world 范围）';
             wsh.appendChild(wst);
-            wsh.appendChild(el('span', 'cmcc-meta', `${w.worldEntryCount} 条`));
+            wsh.appendChild(el('span', 'cmcc-meta', `${w.worldEntryCount} 条记忆`));
             wsh.onclick = () => { toggleCollapsed(wKeyId2); renderTopPanel({ ctx, api, onGotoSettings }); };
             wsh.title = '点击展开 / 收起';
             wsd.appendChild(wsh);
@@ -570,7 +591,7 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
                 if (v) { await api.renameSave(w.key, s.key, v); renderTopPanel({ ctx, api, onGotoSettings }); }
             };
             sh.appendChild(st);
-            sh.appendChild(el('span', 'cmcc-meta', `${s.count} 条`));
+            sh.appendChild(el('span', 'cmcc-meta', `${s.count} 条记忆`));
             const del = el('button', 'cmcc-x', '×');
             del.title = '删除这次经历的全部记忆';
             del.onclick = async (ev) => {
@@ -631,10 +652,67 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
         renderTopPanel({ ctx, api, onGotoSettings });
     }, '只展开当前世界与当前存档'));
     tools.appendChild(mk('打开世界书', () => {
-        try {
-            if (typeof ctx.openWorldInfoEditor === 'function') ctx.openWorldInfoEditor('CMCC-记忆库');
-            else ctx.toastr?.info?.('请在世界书列表里打开「CMCC-记忆库」');
-        } catch (e) { ctx.toastr?.info?.('请在世界书列表里打开「CMCC-记忆库」'); }
-    }, '用 ST 的编辑器批量改记忆'));
+        openWorldBook(ctx, snap.bookName);
+    }, '打开酒馆的世界书面板并定位到记忆世界书'));
     body.appendChild(tools);
+}
+
+/**
+ * 打开 ST 的世界书面板并定位到指定世界书
+ *
+ * 为什么不直接调 openWorldInfoEditor：
+ *   它是 world-info.js 的 export，**不在 getContext() 里**，
+ *   ctx.openWorldInfoEditor 永远是 undefined（这是曾经的 bug，按钮点了没反应）。
+ *   所以照它内部的做法手动来：
+ *     ① 点 #WIDrawerIcon 打开抽屉（ST 的 drawer-toggle 是静态绑定，点它有效）
+ *     ② 给 #world_editor_select 补上选项、选中目标、触发 change
+ */
+export function openWorldBook(ctx, bookName) {
+    const name = bookName || 'CMCC-记忆库';
+
+    // ① 打开抽屉
+    const panel = document.getElementById('WorldInfo');
+    const opened = panel?.classList.contains('openDrawer');
+    if (!opened) {
+        const icon = document.getElementById('WIDrawerIcon')
+            || document.querySelector('#WI-SP-button .drawer-toggle');
+        if (!icon) {
+            ctx.toastr?.warning?.('找不到世界书面板，请用顶部的世界书图标手动打开');
+            return false;
+        }
+        icon.click();
+    }
+
+    // ② 选中目标世界书（抽屉内容可能是异步渲染的，等一小会儿）
+    const pick = () => {
+        const sel = document.getElementById('world_editor_select');
+        if (!sel) return false;
+        // 选项可能还没建，用 world_names 补齐
+        let names = [];
+        try { names = ctx.world_names || []; } catch (e) { /* ignore */ }
+        for (const n of names) {
+            if (![...sel.options].some((o) => o.value === n)) {
+                const o = document.createElement('option');
+                o.value = n;
+                o.textContent = n;
+                sel.appendChild(o);
+            }
+        }
+        if (![...sel.options].some((o) => o.value === name)) {
+            ctx.toastr?.warning?.(`世界书「${name}」还没创建（写进第一条记忆后会自动建）`);
+            return false;
+        }
+        sel.value = name;
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+    };
+
+    if (!pick()) {
+        setTimeout(() => {
+            if (!pick()) {
+                ctx.toastr?.info?.(`请在列表里选「${name}」`);
+            }
+        }, 400);
+    }
+    return true;
 }

@@ -331,14 +331,14 @@ export function renderPanel(o) {
         try { cur = api.currentPos(); } catch (e) { /* ignore */ }
         const rows = [
             `<b>记忆世界书</b>：<code>${snap.bookName}</code>`,
-            `<b>记忆</b>：${s.worldCount} 个世界 / ${s.totalEntries} 条`
+            `<b>记忆</b>：${s.worldCount} 个世界 · ${s.totalEntries} 条记忆`
             + (snap.shared?.length ? ` / 共同 ${snap.shared.length} 条` : ''),
             `当前位置：${cur.wLabel || '—'}`,
         ];
         for (const w of s.worlds.slice(0, 8)) {
             const saves = w.saves.slice(0, 4).map((x) => `${x.label}(${x.count})`).join('、');
             rows.push(`<div class="cmcc-world-line">`
-                + `<b>${w.label}</b> — ${w.saveCount} 次 / ${w.count} 条`
+                + `<b>${w.label}</b> — ${w.saveCount} 个存档 · ${w.count} 条记忆`
                 + `<div class="cmcc-saves">${saves}${w.saves.length > 4 ? ' …' : ''}</div></div>`);
         }
         if (s.worlds.length > 8) rows.push(`… 还有 ${s.worlds.length - 8} 个世界`);
