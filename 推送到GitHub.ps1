@@ -30,6 +30,44 @@ if (-not (Test-Path $GitExe)) {
 & $GitExe --version | Out-Null
 Ok "git 可用（$(& $GitExe --version)）"
 
+# ── 1.5) 预检 GitHub 连通性 ──
+# 国内直连 GitHub 的典型症状：TCP 端口能通，但 HTTP 层被重置，
+# 表现为 push 卡 20~35 秒然后失败。先探一次，早点告诉用户要开代理。
+Say ''
+Say '  正在检查 GitHub 连通性（最多等 30 秒）...'
+$proxyOn = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings' -EA SilentlyContinue).ProxyEnable
+$env:GIT_TERMINAL_PROMPT = '0'
+
+function Test-GitHub {
+    & $GitExe -c http.connectTimeout=10 ls-remote https://github.com/git/git.git HEAD *>&1 | Out-Null
+    return ($LASTEXITCODE -eq 0)
+}
+
+if (Test-GitHub) {
+    Ok '能连上 GitHub'
+    if ($proxyOn -eq 1) { Say '     （系统代理开着）' }
+} else {
+    Bad '连不上 GitHub'
+    Say ''
+    Say '  [!] 国内直连 GitHub 经常失败（端口通但 HTTP 被重置）。'
+    Say '      需要：打开代理软件 → 连上节点 → **开启「系统代理」**'
+    Say ''
+    Say "      当前系统代理开关: $(if ($proxyOn -eq 1) { '开' } else { '关  <-- 需要打开' })"
+    Say ''
+    $again = Read-Host '  开好代理后按回车重试（输入 s 跳过直接推送）'
+    if ($again -ne 's' -and $again -ne 'S') {
+        if (Test-GitHub) {
+            Ok '现在能连上了'
+        } else {
+            Bad '还是连不上'
+            Say '    继续推送大概率会失败或卡很久。'
+            $go2 = Read-Host '  仍要继续？(y/N)'
+            if ($go2 -ne 'y' -and $go2 -ne 'Y') { Say '  已取消'; Start-Sleep 2; exit 0 }
+        }
+    }
+}
+Say ''
+
 # ── 2) 检查仓库 ──
 if (-not (Test-Path (Join-Path $RepoDir '.git'))) {
     Bad "这里不是 git 仓库：$RepoDir"
@@ -88,8 +126,13 @@ Say '------------------------------------------'
 Say '  开始推送（首次会弹浏览器让你登录 GitHub）'
 Say '------------------------------------------'
 Say ''
-& $GitExe push -u origin main
-$code = $LASTEXITCODE
+$code = 1
+for ($try = 1; $try -le 3; $try++) {
+    if ($try -gt 1) { Say "  第 $try 次尝试..."; Start-Sleep 3 }
+    & $GitExe push -u origin main
+    $code = $LASTEXITCODE
+    if ($code -eq 0) { break }
+}
 Say ''
 
 if ($code -eq 0) {
