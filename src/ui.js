@@ -134,6 +134,28 @@ export function renderPanel(o) {
     // 内容区
     // ══════════════════════════════════
 
+    /**
+     * 重建面板内容
+     *
+     * ★ 为什么要有这个函数（真实 bug）：
+     *   原来 `refresh()` **只更新「记忆总览」**，从不重建人设下拉和那四个输入框。
+     *   于是删掉一个人设之后：
+     *     · activeBuiltinId 已经变了，但下拉和输入框还显示旧的 → 看起来"没删掉"
+     *     · 更糟的是，那些输入框的 onchange 会把**旧内容写进新激活的人设**
+     *       → 于是出现「只留下名字、其他内容没了」
+     *   （用户报的就是这个。）
+     *
+     *   现在把整块内容的创建包进这个函数，结构性变更后整块重建。
+     */
+    // ★ 这两个元素由 rebuildInner 赋值，但**声明在外层** ——
+    //   因为 refreshStats() 要用它们，而它不在 rebuildInner 里面。
+    //   如果在这里 const 声明，每次重建都会换对象，refreshStats 就更新到旧的了。
+    let ovSummary = null;
+    let stats = null;
+
+    function rebuildInner() {
+        inner.innerHTML = '';
+
     // ── 陪伴角色 ──
     const sec1 = el('div', 'cmcc-sec');
     sec1.appendChild(el('div', 'cmcc-sec-title', '陪伴角色'));
@@ -523,7 +545,7 @@ export function renderPanel(o) {
     const ovHead = el('div', 'cmcc-ov-head');
     ovHead.appendChild(el('span', 'cmcc-chev2', OVERVIEW_OPEN ? '▾' : '▸'));
     ovHead.appendChild(el('span', 'cmcc-ov-title', '记忆总览'));
-    const ovSummary = el('span', 'cmcc-meta cmcc-ov-summary', '');
+    ovSummary = el('span', 'cmcc-meta cmcc-ov-summary', '');
     ovHead.appendChild(ovSummary);
     const bTop = el('button', 'menu_button cmcc-mini', '去编辑');
     bTop.title = '打开顶部面板改人设 / 记忆';
@@ -536,7 +558,7 @@ export function renderPanel(o) {
     ovHead.title = '点击展开 / 收起';
     sec3.appendChild(ovHead);
 
-    const stats = el('div', 'cmcc-stats cmcc-ov-body');
+    stats = el('div', 'cmcc-stats cmcc-ov-body');
     sec3.appendChild(stats);
     inner.appendChild(sec3);
 
@@ -597,7 +619,18 @@ export function renderPanel(o) {
         sel.value = keep;
     }
 
-    function refresh() {
+    }   // ── rebuildInner 结束 ──
+
+    /**
+     * 只刷新「记忆总览」的数字，不重建整块内容
+     *
+     * ⚠ ovSummary / stats 是**外层声明的变量**，由 rebuildInner 赋值。
+     *   不能在这里 const 重新绑定 —— 那样每次重建都会换一个对象，
+     *   而 refreshStats 里引用的还是旧的，更新就落空了。
+     */
+    function refreshStats() {
+        // 还没建过（理论上不会发生，但防止 rebuildInner 抛错后崩在这）
+        if (!ovSummary || !stats) return;
         let snap;
         try { snap = api.snapshot(); } catch (e) {
             stats.innerHTML = '<div class="cmcc-empty">读取失败</div>';
@@ -647,11 +680,30 @@ export function renderPanel(o) {
         }
         stats.innerHTML = rows.map((x) => `<div class="cmcc-stat-line">${x}</div>`).join('');
     }
-    refresh();
+
+    /**
+     * 刷新面板 —— **永远整块重建**
+     *
+     * 为什么不做成"只有结构性变更才重建"：
+     *   我试过。那个条件分支踩了两个坑 ——
+     *     ① 只在记忆总览更新时不重建人设栏 → 删了人设界面不变，
+     *        而且旧输入框的 onchange 会把旧内容写进新激活的人设
+     *     ② 首屏调用忘了传参数 → rebuild 为假 → 整块空白
+     *   整块重建很便宜（几十个元素），不值得为这点性能冒两个 bug 的险。
+     */
+    function refresh() {
+        try {
+            rebuildInner();
+        } catch (e) {
+            console.warn('[CMCC] 重建设置面板失败', e);
+        }
+        refreshStats();
+    }
 
     const host = document.getElementById('extensions_settings2')
         || document.getElementById('extensions_settings');
     host?.appendChild(root);   // 初始状态已在上方定好，这里不再改（改了会触发过渡）
+    refresh();   // 首屏渲染一次（此时已挂到 DOM 上）
     return {
         refresh,
         expand: () => applyExpand(true),
