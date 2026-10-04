@@ -32,7 +32,9 @@ import {
 import { buildGuide, buildMemoryBlock, buildInjectionText, injectIntoRequest,
          estimateTokens, WORLDBOOK_CHANNEL } from './src/inject.js';
 import { parseMemoryCommands, commandSpec, stripBlocks } from './src/memo.js';
-import { extractPresetSummary, splitSummary, summaryHint } from './src/summary.js';
+// 注：src/summary.js 仍然保留（能读预设的 <summary> 摘要），
+// 但按用户要求**不再接入记忆流程** ——
+// 摘要记录整节剧情（含她不在场的部分），而她只该记「和你共同经历的事」。
 import { renderPanel } from './src/ui.js';
 import { mountTopDrawer, renderTopPanel, openTopPanel, setRenderHook } from './src/topbar.js';
 
@@ -424,9 +426,7 @@ function onSettingsReady(generateData) {
             settings,
             saveSwitched: autoState.justSwitched,
             // MVU 式：告诉她怎么输出记忆块
-            memoSpec: settings.readMemoryCommands === false
-                ? ''
-                : (commandSpec() + '\n\n' + summaryHint()),
+            memoSpec: settings.readMemoryCommands === false ? '' : commandSpec(),
         });
         if (!guide) return;
 
@@ -629,19 +629,12 @@ async function onMessageReceived(index) {
             warn('记忆块解析提示：%s', errors.join(' / '));
         }
 
-        let todo = entries;
-        let source = '记忆块';
-
-        // ── 来源 ②：预设自带的 <summary> 摘要 ──
-        //   用户的想法：预设已经让 AI 写 150 字摘要了，插件直接读它，
-        //   不用再让 AI 写第二份（省 token，也少一个正文块）。
-        if (!todo.length) {
-            const sum = extractPresetSummary(text);
-            if (sum) {
-                todo = splitSummary(sum).map((line) => ({ scope: 'save', text: line }));
-                source = '预设摘要';
-            }
-        }
+        // ★ 只认「共同记忆块」。**不读预设摘要** ——
+        //   摘要记录的是整节剧情（含她不在场的部分），
+        //   而她应该只记得和 {user} 共同经历的事。
+        //   用户明确：「必须要是两人共同经历的事情（必须）」。
+        const todo = entries;
+        const source = '共同记忆块';
 
         if (!blockCount && !todo.length) return;
 

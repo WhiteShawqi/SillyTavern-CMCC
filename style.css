@@ -941,3 +941,44 @@ details.cmcc > *:not(summary) {
 details.cmcc[open] > *:not(summary):last-child {
     padding-bottom: 7px;
 }
+
+/* ══ 正文里的「共同记忆」块 ══
+   AI 输出 ```cmcc … ``` ，酒馆会渲染成 <pre><code class="language-cmcc">。
+   给它专属样式，一眼能认出这不是普通代码，而是她的记忆。
+   默认保持可见（用户要求：能回看这次记了什么）。 */
+.mes_text pre:has(> code.language-cmcc),
+.mes_text code.language-cmcc {
+    display: block;
+    border-left: 3px solid rgba(122 162 247 / 0.75);
+    border-radius: 6px;
+    background: rgba(122 162 247 / 0.09) !important;
+    color: inherit !important;
+    font-family: inherit !important;
+    font-size: 0.92em;
+    padding: 7px 10px;
+    margin: 6px 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.65;
+    opacity: 0.92;
+}
+
+/* 标题条：用 ::before 标一下这是记忆，不是代码 */
+.mes_text pre:has(> code.language-cmcc)::before,
+.mes_text code.language-cmcc::before {
+    content: '她的记忆';
+    display: block;
+    font-size: 0.78em;
+    font-weight: bold;
+    color: #b9cdff;
+    opacity: 0.75;
+    margin-bottom: 4px;
+    letter-spacing: 0.05em;
+}
+
+/* 去掉代码块默认的灰底与等宽观感 */
+.mes_text pre:has(> code.language-cmcc) {
+    background: transparent !important;
+    border: none;
+    padding: 0;
+}

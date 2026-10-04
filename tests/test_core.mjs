@@ -452,7 +452,7 @@ chk(stripBlocks('a\n```js\nvar x=1;\n`\nb').includes('var x=1;'), 'stripBlocks �
 // commandSpec
 const spec = commandSpec();
 chk(spec.includes('cmcc'), '格式说明含 cmcc');
-chk(spec.includes('一行一条记忆'), '★ 格式说明要求一行一条，不带前缀');
+chk(spec.includes('一行一条'), '★ 格式说明要求一行一条，不带前缀');
 chk(!spec.includes('+save|'), '★ 格式说明不再要求 +scope| 前缀');
 chk(spec.includes('最多 5 条'), '格式说明有数量约束');
 console.log('');
@@ -717,8 +717,15 @@ chk(parseBlock('<p>+save|event|带p标签</p>').entries[0].text === '带p标签'
 
 // commandSpec 用新格式
 const sp = commandSpec();
-chk(sp.includes('<details'), '★ 格式说明用 details');
-chk(sp.includes('本次记忆'), '格式说明含 summary 标题');
+chk(sp.includes('`cmcc'), '★ 格式说明用专属围栏 `cmcc');
+chk(sp.includes('必须是你和 {user} 两个人共同经历'), '★★ 强制要求「两人共同经历」');
+chk(sp.includes('你不在场时发生的事'), '★ 明确排除她不在场的事');
+chk(sp.includes('30~50 字'), '★★ 强制要求 30~50 字');
+chk(sp.includes('尽量写详细'), '★ 要求写详细，不是一句话概括');
+chk(sp.includes('不要编号'), '要求不要编号/前缀');
+chk(!sp.includes('<details'), '★ 不再用 details 格式（改回围栏）');
+chk(sp.includes('就不输出这个块'), '★ 没有共同经历时明确不要输出');
+chk(sp.includes('共同记忆'), '格式说明含 summary 标题');
 chk(sp.includes('不要写范围'), '★ 格式说明明确不用写范围');
 console.log('');
 
@@ -841,9 +848,9 @@ chk(splitSummary(longOne).every((x) => x.length <= 120), '★ 超长句会再切
 
 // ── summaryHint ──
 const hint = summaryHint();
-chk(hint.includes('长期记忆'), '★ 提示词说明摘要会被当记忆');
-chk(hint.includes('具体事件'), '提示词要求写具体事件');
-chk(hint.includes('150'), '提示词保留字数约定');
+chk(!hint.includes('会被当作'), '★ 不再说摘要会被当记忆');
+chk(hint.includes('共同记忆'), '提示词指向共同记忆块');
+chk(hint.includes('不是你的记忆'), '★ 提示词明确摘要不进记忆');
 console.log('');
 
 // ── 24. 接入：没有 cmcc 块时用摘要 ──
@@ -852,7 +859,7 @@ const msgWithSummary = '正文。\n<summary>' + SUM_TEXT + '</summary>';
 const cm = parseMemoryCommands(msgWithSummary);
 chk(cm.blockCount === 0, '这条消息没有 cmcc 块');
 const fromSum = splitSummary(extractPresetSummary(msgWithSummary));
-chk(fromSum.length >= 2, '★ 于是从摘要取到多条记忆');
+chk(fromSum.length >= 2, '（summary.js 仍有切句能力，但已不接入）');
 chk(fromSum.every((x) => typeof x === 'string' && x.length), '切出来的都是非空字符串');
 // 两者都有时，cmcc 块优先
 const both = msgWithSummary + '\n<details class="cmcc"><summary>本次记忆</summary>\n显式记忆\n</details>';
