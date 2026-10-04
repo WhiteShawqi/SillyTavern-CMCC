@@ -147,6 +147,79 @@ export function deleteMemory(world, sKey, index) {
     return true;
 }
 
+/**
+ * 批量删一个存档里的多条记忆
+ * @param {object} world
+ * @param {string} sKey
+ * @param {number[]} indexes
+ * @returns {number} 实际删掉的条数
+ */
+export function deleteMemories(world, sKey, indexes) {
+    const s = world?.saves?.[sKey];
+    if (!s || !Array.isArray(s.entries) || !Array.isArray(indexes) || !indexes.length) return 0;
+    // 去重 + 越界过滤 + 从后往前删（避免下标位移）
+    const uniq = [...new Set(indexes)]
+        .filter((i) => Number.isInteger(i) && i >= 0 && i < s.entries.length)
+        .sort((a, b) => b - a);
+    for (const i of uniq) s.entries.splice(i, 1);
+    return uniq.length;
+}
+
+/**
+ * 按范围清空记忆（纯逻辑，只动传进来的数据结构）
+ * @param {object} worlds 整个 worlds 容器（会被修改）
+ * @param {'save'|'world'|'shared'|'currentWorld'} scope
+ * @param {{wKey:string, sKey:string, wLabel?:string}} pos
+ * @returns {{deleted:number, what:string}}
+ */
+export function clearByScope(worlds, scope, pos) {
+    let deleted = 0;
+    let what = '';
+    const w = worlds?.[pos?.wKey];
+
+    if (scope === 'shared') {
+        const arr = worlds?.__shared__?.saves?.common?.entries;
+        deleted = arr?.length || 0;
+        if (worlds?.__shared__?.saves) delete worlds.__shared__.saves.common;
+        what = '共同记忆';
+    } else if (scope === 'world') {
+        const arr = w?.saves?.[WORLDBOOK_CHANNEL]?.entries;
+        deleted = arr?.length || 0;
+        if (w?.saves?.[WORLDBOOK_CHANNEL]) delete w.saves[WORLDBOOK_CHANNEL];
+        what = (pos?.wLabel || '当前世界') + ' 的世界级记忆';
+    } else if (scope === 'save') {
+        const save = w?.saves?.[pos?.sKey];
+        deleted = save?.entries?.length || 0;
+        if (save) save.entries = [];
+        what = (pos?.wLabel || '当前世界') + ' / 本次';
+    } else if (scope === 'currentWorld') {
+        if (w) {
+            for (const s of Object.values(w.saves || {})) {
+                deleted += (s.entries || []).length;
+            }
+            delete worlds[pos.wKey];
+        }
+        what = (pos?.wLabel || '当前世界') + '（整个世界）';
+    }
+    return { deleted, what };
+}
+
+/**
+ * 收掉空存档 / 空世界（纯逻辑）
+ * @returns {{saves:number, worlds:number}}
+ */
+export function purgeEmpty(worlds) {
+    let saves = 0, worlds_n = 0;
+    for (const [wk, w] of Object.entries(worlds || {})) {
+        if (!w?.saves) { delete worlds[wk]; worlds_n++; continue; }
+        for (const [sk, s] of Object.entries(w.saves)) {
+            if (!(s.entries || []).length) { delete w.saves[sk]; saves++; }
+        }
+        if (!Object.keys(w.saves).length) { delete worlds[wk]; worlds_n++; }
+    }
+    return { saves, worlds: worlds_n };
+}
+
 /** 重命名存档 */
 export function renameSave(world, sKey, name) {
     const s = world.saves?.[sKey];

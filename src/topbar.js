@@ -52,6 +52,23 @@ function toggleCollapsed(key) {
 /** 展开某个键 */
 export function expandKey(key) { COLLAPSED.delete(key); }
 
+// ── 多选模式（模块级，重渲染后保持）──
+/** 是否处于多选模式 */
+let SELECT_MODE = false;
+/** 已勾选的记忆，键形如 'w|s|3'（世界+存档+下标），跨存档全局唯一 */
+const SELECTED = new Set();
+
+/** 组合一条记忆的唯一键 */
+function entryKey(wKey, sKey, idx) {
+    return wKey + '\u0000' + sKey + '\u0000' + idx;
+}
+
+/** 拆回 [wKey, sKey, idx] */
+function parseEntryKey(k) {
+    const [w, s, i] = k.split('\u0000');
+    return [w, s, parseInt(i, 10)];
+}
+
 /**
  * 判断记忆世界书是否已挂载（全局选中 或 当前角色的附加世界书）
  * ST 只读「外部世界书文件」，卡内嵌的不生效 —— 所以要提醒用户挂载。
@@ -464,6 +481,73 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
     let cur = { wKey: '', sKey: '', wLabel: '' };
     try { cur = api.currentPos(); } catch (e) { /* ignore */ }
 
+    // ── 多选工具栏 ──
+    const selBar = el('div', 'cmcc-selbar');
+    const bSelToggle = el('button', 'menu_button cmcc-mini',
+        SELECT_MODE ? '✕ 退出多选' : '☑ 多选');
+    bSelToggle.title = SELECT_MODE ? '退出多选模式' : '勾选多条记忆一起删';
+    bSelToggle.onclick = () => {
+        SELECT_MODE = !SELECT_MODE;
+        if (!SELECT_MODE) SELECTED.clear();
+        renderTopPanel({ ctx, api, onGotoSettings });
+    };
+    selBar.appendChild(bSelToggle);
+
+    if (SELECT_MODE) {
+        selBar.appendChild(el('span', 'cmcc-meta', `已选 ${SELECTED.size} 条`));
+
+        const bAll = el('button', 'menu_button cmcc-mini', '全选当前');
+        bAll.title = '勾选当前世界里的全部记忆';
+        bAll.onclick = () => {
+            for (const w of snap.stats.worlds) {
+                for (const s of w.saves) {
+                    const arr = snap.worlds?.[w.key]?.saves?.[s.key]?.entries || [];
+                    arr.forEach((_, i) => SELECTED.add(entryKey(w.key, s.key, i)));
+                }
+                if (w.worldEntryCount) {
+                    const arr = snap.worlds?.[w.key]?.saves?.[WORLDBOOK_CHANNEL]?.entries || [];
+                    arr.forEach((_, i) => SELECTED.add(entryKey(w.key, WORLDBOOK_CHANNEL, i)));
+                }
+            }
+            renderTopPanel({ ctx, api, onGotoSettings });
+        };
+        selBar.appendChild(bAll);
+
+        const bNone = el('button', 'menu_button cmcc-mini', '清空勾选');
+        bNone.onclick = () => {
+            SELECTED.clear();
+            renderTopPanel({ ctx, api, onGotoSettings });
+        };
+        selBar.appendChild(bNone);
+
+        const bDel = el('button', 'menu_button cmcc-mini cmcc-danger',
+            `删除选中的 ${SELECTED.size} 条`);
+        bDel.disabled = SELECTED.size === 0;
+        bDel.onclick = async () => {
+            if (!SELECTED.size) return;
+            const ok = await ctx.callGenericPopup(
+                `确定删除选中的 ${SELECTED.size} 条记忆？`, ctx.POPUP_TYPE.CONFIRM);
+            if (!ok) return;
+            // 按「世界 + 存档」分组，一次删一组
+            const groups = new Map();
+            for (const k of SELECTED) {
+                const [w, s, i] = parseEntryKey(k);
+                const gk = w + '\u0000' + s;
+                if (!groups.has(gk)) groups.set(gk, { w, s, idx: [] });
+                groups.get(gk).idx.push(i);
+            }
+            let total = 0;
+            for (const { w, s, idx } of groups.values()) {
+                total += await api.deleteMemories(w, s, idx);
+            }
+            SELECTED.clear();
+            ctx.toastr?.success?.(`已删除 ${total} 条记忆`);
+            renderTopPanel({ ctx, api, onGotoSettings });
+        };
+        selBar.appendChild(bDel);
+    }
+    memBox.appendChild(selBar);
+
     /**
      * 渲染一组记忆条目（可编辑 / 删除）
      * 抽成函数是因为「存档记忆」和「世界级记忆」要共用同一套交互。
@@ -475,6 +559,34 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
         (entries || []).slice(start).forEach((e, i) => {
             const idx = start + i;
             const row = el('div', 'cmcc-entry');
+
+            if (SELECT_MODE) {
+                // ── 多选模式：显示勾选框，点整行即勾选 ──
+                const val = entryKey(wKey, sKey, idx);
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.className = 'cmcc-check';
+                cb.checked = SELECTED.has(val);
+                cb.onclick = (ev) => ev.stopPropagation();
+                cb.onchange = () => {
+                    if (cb.checked) SELECTED.add(val);
+                    else SELECTED.delete(val);
+                    renderTopPanel({ ctx, api, onGotoSettings });
+                };
+                row.appendChild(cb);
+                row.classList.add('cmcc-entry-sel');
+                if (SELECTED.has(val)) row.classList.add('cmcc-picked');
+                const t2 = el('span', 'cmcc-entry-text', e.text);
+                row.appendChild(t2);
+                row.onclick = () => {
+                    if (SELECTED.has(val)) SELECTED.delete(val);
+                    else SELECTED.add(val);
+                    renderTopPanel({ ctx, api, onGotoSettings });
+                };
+                ul.appendChild(row);
+                return;
+            }
+
             const txt = el('span', 'cmcc-entry-text', e.text);
             txt.title = '点击编辑';
             txt.onclick = async () => {
@@ -655,6 +767,43 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
         openWorldBook(ctx, snap.bookName);
     }, '打开酒馆的世界书面板并定位到记忆世界书'));
     body.appendChild(tools);
+
+    // ── 按范围删除 ──
+    const dangerBox = el('div', 'cmcc-top-section cmcc-danger-box');
+    dangerBox.appendChild(el('div', 'cmcc-sec-title', '按范围删除'));
+
+    const mkScope = (label, scope, what) => {
+        const b = el('button', 'menu_button cmcc-mini cmcc-danger', label);
+        b.title = '删除：' + what;
+        b.onclick = async () => {
+            const ok = await ctx.callGenericPopup(
+                `确定删除「${what}」的**全部**记忆？此操作不可撤销。`,
+                ctx.POPUP_TYPE.CONFIRM);
+            if (!ok) return;
+            const r = await api.deleteByScope(scope);
+            SELECTED.clear();
+            ctx.toastr?.success?.(`已删除 ${r.deleted} 条（${r.what}）`);
+            renderTopPanel({ ctx, api, onGotoSettings });
+        };
+        return b;
+    };
+
+    const scopeRow1 = el('div', 'cmcc-btns');
+    scopeRow1.appendChild(mkScope('清空本次存档', 'save',
+        `${cur.wLabel || '当前世界'} / 本次`));
+    scopeRow1.appendChild(mkScope('清空世界级', 'world',
+        `${cur.wLabel || '当前世界'} 的世界级记忆`));
+    dangerBox.appendChild(scopeRow1);
+
+    const scopeRow2 = el('div', 'cmcc-btns');
+    scopeRow2.appendChild(mkScope('清空共同记忆', 'shared', '跨所有世界的共同记忆'));
+    scopeRow2.appendChild(mkScope('删除整个世界', 'currentWorld',
+        `${cur.wLabel || '当前世界'}（含全部存档）`));
+    dangerBox.appendChild(scopeRow2);
+
+    dangerBox.appendChild(el('div', 'cmcc-hint',
+        '这些只删记忆，不会删你的聊天记录。删错了可以用 ST 的世界书编辑器手动补回来。'));
+    body.appendChild(dangerBox);
 }
 
 /**

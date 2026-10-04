@@ -25,6 +25,7 @@ const {
     worldStats, bookStats,
     migrateFromLocalStorage, clearLegacyKeys,
     DEFAULT_SETTINGS, normalizeSettings,
+    deleteMemories, clearByScope, purgeEmpty,
 } = await import('../src/state.js');
 
 const {
@@ -38,6 +39,7 @@ const {
     buildRules, buildWhereBlock, buildMemoryBlock, buildInjectionText, TAG,
     WORLDBOOK_CHANNEL,
 } = await import('../src/inject.js');
+const CH = WORLDBOOK_CHANNEL;
 
 const {
     extractBlocks, stripBlocks, parseBlock, parseMemoryCommands, commandSpec,
@@ -545,6 +547,124 @@ chk(rst.count === 5, '总条数 5 条（世界级条目仍计入这个世界）'
 chk(rst.worldEntryCount === 1, '世界级 1 条');
 chk(rst.saves.length === 4, '存档列表 4 项');
 chk(rst.saves.every((x) => x.key !== WORLDBOOK_CHANNEL), '存档列表里没有世界通道');
+console.log('');
+
+
+// ── 18. 批量删除 ──
+console.log('【18】批量删除');
+function mkWorld(n) {
+    const w = emptyWorld('W');
+    ensureSave(w, 's1', '存档1');
+    for (let i = 0; i < n; i++) addMemory(w, 's1', '第' + i + '条', 'memo');
+    return w;
+}
+function texts(w, k = 's1') { return (w.saves[k]?.entries || []).map((e) => e.text); }
+
+let w1 = mkWorld(6);
+let del = deleteMemories(w1, 's1', [1, 3, 5]);
+chk(del === 3, '删 3 条');
+chk(texts(w1).join(',') === '第0条,第2条,第4条', '★ 删对了（不是按下标位移后删错）');
+chk(texts(w1).length === 3, '剩 3 条');
+
+w1 = mkWorld(5);
+chk(deleteMemories(w1, 's1', [1, 1, 1]) === 1, '★ 重复下标只删一次');
+chk(texts(w1).length === 4, '去重后剩 4 条');
+
+w1 = mkWorld(3);
+chk(deleteMemories(w1, 's1', [99, -1, 0]) === 1, '★ 越界下标被忽略');
+chk(texts(w1).length === 2, '只删掉合法的那条');
+
+w1 = mkWorld(3);
+chk(deleteMemories(w1, 's1', []) === 0, '空数组 → 0');
+chk(deleteMemories(w1, 's1', null) === 0, 'null → 0');
+chk(deleteMemories(w1, '不存在', [0]) === 0, '不存在的存档 → 0');
+chk(deleteMemories(null, 's1', [0]) === 0, 'null world → 0');
+
+w1 = mkWorld(3);
+chk(deleteMemories(w1, 's1', [0, 1, 2]) === 3, '全删');
+chk(texts(w1).length === 0, '删光了');
+
+// 乱序下标也要正确
+w1 = mkWorld(6);
+chk(deleteMemories(w1, 's1', [5, 0, 3]) === 3, '乱序下标');
+chk(texts(w1).join(',') === '第1条,第2条,第4条', '★ 乱序也删对');
+console.log('');
+
+// ── 19. 按范围删除 ──
+console.log('【19】按范围删除');
+function fullModel() {
+    const worlds = {};
+    const A = emptyWorld('世界A');
+    ensureSave(A, 's1', '存档1'); addMemory(A, 's1', 'A存档1的事', 'memo');
+    ensureSave(A, 's2', '存档2'); addMemory(A, 's2', 'A存档2的事', 'memo');
+    ensureSave(A, CH, '整个世界'); addMemory(A, CH, 'A世界级', 'world');
+    worlds['char:A'] = A;
+
+    const B = emptyWorld('世界B');
+    ensureSave(B, 's1', '存档1'); addMemory(B, 's1', 'B的事', 'memo');
+    worlds['char:B'] = B;
+
+    const SH = emptyWorld('共同');
+    ensureSave(SH, 'common', '共同'); addMemory(SH, 'common', '共同记忆', 'shared');
+    worlds.__shared__ = SH;
+    return worlds;
+}
+const pos = { wKey: 'char:A', sKey: 's1', wLabel: '世界A' };
+
+// save 级
+let m = fullModel();
+let rs = clearByScope(m, 'save', pos);
+chk(rs.deleted === 1, '清空本次：删 1 条');
+chk(!m['char:A'].saves.s1.entries.length, '★ 存档还在，只是空了');
+chk(!!m['char:A'].saves.s1, '★ 存档本身没被删');
+chk(m['char:A'].saves[CH].entries.length === 1, 'world 级未受影响');
+chk(m['char:B'].saves.s1.entries.length === 1, '别的世界未受影响');
+chk(m.__shared__.saves.common.entries.length === 1, '共同记忆未受影响');
+chk(rs.what.includes('世界A'), '返回里带了世界名');
+
+// world 级
+m = fullModel();
+r = clearByScope(m, 'world', pos);
+chk(rs.deleted === 1, '清空世界级：删 1 条');
+chk(!m['char:A'].saves[CH], '★ 世界级通道已清');
+chk(m['char:A'].saves.s1.entries.length === 1, 'save 级未受影响');
+chk(m['char:A'].saves.s2.entries.length === 1, '其他存档未受影响');
+
+// shared
+m = fullModel();
+r = clearByScope(m, 'shared', pos);
+chk(rs.deleted === 1, '清空共同：删 1 条');
+chk(!m.__shared__.saves.common, '★ 共同记忆已清');
+chk(m['char:A'].saves.s1.entries.length === 1, '世界 A 未受影响');
+
+// currentWorld
+m = fullModel();
+const cw = clearByScope(m, 'currentWorld', pos);
+chk(cw.deleted === 3, '删整个世界：3 条（存档1 + 存档2 + 世界级，不含共同）');
+chk(!m['char:A'], '★ 世界 A 已整个移除');
+chk(!!m['char:B'], '别的世界还在');
+chk(!!m.__shared__, '共同记忆还在');
+
+// 边界
+m = fullModel();
+chk(clearByScope(m, 'save', { wKey: '不存在', sKey: 'x' }).deleted === 0, '不存在的世界 → 0');
+chk(clearByScope(m, '未知范围', pos).deleted === 0, '未知范围 → 0');
+chk(clearByScope(null, 'save', pos).deleted === 0, 'null worlds → 0');
+console.log('');
+
+// ── 20. 清理空壳 ──
+console.log('【20】清理空壳');
+m = fullModel();
+m['char:C'] = emptyWorld('世界C');           // 完全没有存档
+ensureSave(m['char:A'], '空存档', '空');
+// ⚠ purgeEmpty 会改数据，只能调一次再读结果
+const pe = purgeEmpty(m);
+chk(pe.worlds >= 1, '★ 清掉了没有任何存档的世界');
+chk(!m['char:C'], '世界C 已移除');
+chk(pe.saves >= 1, '★ 清掉了空存档（' + pe.saves + ' 个）');
+const kept = Object.keys(m['char:A'].saves);
+chk(!kept.includes('空存档'), '空存档没了');
+chk(kept.includes('s1') && kept.includes('s2') && kept.includes(CH), '有内容的都留着');
 console.log('');
 
 console.log(fail === 0 ? `✓ 全部通过 (${pass} 项)` : `❌ 失败 ${fail} 项 / 共 ${pass + fail} 项`);

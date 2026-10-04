@@ -18,6 +18,7 @@ import {
     worldKey, worldLabel, saveKey,
     emptyWorld, ensureSave, addMemory, renameSave, deleteSave,
     editMemory, deleteMemory, renameWorld,
+    deleteMemories, clearByScope, purgeEmpty,
     worldStats, bookStats,
     migrateFromLocalStorage, clearLegacyKeys,
 } from './src/state.js';
@@ -189,24 +190,6 @@ async function loadFromBook() {
 
     CACHE.loaded = true;
     return book;
-}
-
-/**
- * 清掉内存模型里的空存档 / 空世界
- * 用途：旧版本会给每个进过的存档建空壳，升级后需要收一次尾。
- * @returns {{saves:number, worlds:number}} 各清理了多少
- */
-function purgeEmpty() {
-    let saves = 0, worlds = 0;
-    for (const [wk, w] of Object.entries(CACHE.worlds)) {
-        if (!w?.saves) { delete CACHE.worlds[wk]; worlds++; continue; }
-        for (const [sk, s] of Object.entries(w.saves)) {
-            // "__world__" 是世界级记忆的容器，只有它空了才算空
-            if (!(s.entries || []).length) { delete w.saves[sk]; saves++; }
-        }
-        if (!Object.keys(w.saves).length) { delete CACHE.worlds[wk]; worlds++; }
-    }
-    return { saves, worlds };
 }
 
 /** 把 CACHE 写回世界书 */
@@ -708,6 +691,36 @@ const api = {
         await saveToBook();
         panel?.refresh();
     },
+    /**
+     * 批量删（多选）
+     * @param {string} wKey
+     * @param {string} sKey
+     * @param {number[]} indexes 同一存档内要删的下标
+     * @returns {number} 实际删掉的条数
+     */
+    async deleteMemories(wKey, sKey, indexes) {
+        await loadFromBook();
+        const w = CACHE.worlds[wKey];
+        const n = deleteMemories(w, sKey, indexes);
+        await saveToBook();
+        panel?.refresh();
+        return n;
+    },
+    /**
+     * 按范围删除（作用于当前所在位置）
+     * @param {'save'|'world'|'shared'|'currentWorld'} scope
+     * @returns {{deleted:number, what:string}}
+     */
+    async deleteByScope(scope) {
+        await loadFromBook();
+        const p = currentPos();
+        const r = clearByScope(CACHE.worlds, scope, p);
+        purgeEmpty(CACHE.worlds);
+        await saveToBook();
+        panel?.refresh();
+        api.refreshTop();
+        return r;
+    },
     async addMemory(wKey, sKey, text) {
         await loadFromBook();
         const w = CACHE.worlds[wKey] || (CACHE.worlds[wKey] = emptyWorld('未知世界'));
@@ -763,7 +776,7 @@ const api = {
     /** 清掉空的存档/世界（旧版本留下的空壳） */
     async cleanEmpty() {
         const book = await loadFromBook();
-        const r = purgeEmpty();
+        const r = purgeEmpty(CACHE.worlds);
         await saveToBook(book);
         panel?.refresh();
         api.refreshTop();
@@ -916,7 +929,7 @@ jQuery(async () => {
     setTimeout(async () => {
         try {
             const book = await loadFromBook();
-            const r = purgeEmpty();
+            const r = purgeEmpty(CACHE.worlds);
             if (r.saves || r.worlds) {
                 await saveToBook(book);
                 log('清理空存档 %d 个 / 空世界 %d 个', r.saves, r.worlds);

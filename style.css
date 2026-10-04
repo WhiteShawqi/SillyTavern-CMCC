@@ -569,3 +569,56 @@
 .cmcc-panel .inline-drawer-content.cmcc-animated > .cmcc-drawer-inner {
     min-height: 0;
 }
+
+/* ══ 多选模式 ══ */
+.cmcc-selbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding: 6px 0;
+    border-bottom: 1px dashed rgba(127 127 127 / 0.3);
+    margin-bottom: 6px;
+}
+
+.cmcc-check {
+    flex: 0 0 auto;
+    margin: 0 4px 0 0;
+    cursor: pointer;
+}
+
+/* 多选模式下整行可点 */
+.cmcc-entry-sel {
+    cursor: pointer;
+    border-radius: 4px;
+    padding-left: 2px;
+}
+
+.cmcc-entry-sel:hover { background: rgba(127 127 127 / 0.12); }
+
+.cmcc-picked {
+    background: rgba(122 162 247 / 0.18) !important;
+}
+
+.cmcc-picked .cmcc-entry-text { opacity: 1; }
+
+/* 危险操作（删除类）统一配色 */
+.cmcc-danger {
+    border-color: rgba(220 80 80 / 0.5) !important;
+    color: #ff9b9b !important;
+}
+
+.cmcc-danger:hover:not(:disabled) {
+    background: rgba(220 80 80 / 0.18) !important;
+    border-color: rgba(220 80 80 / 0.9) !important;
+}
+
+.cmcc-danger:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.cmcc-danger-box {
+    border-left: 3px solid rgba(220 80 80 / 0.5);
+    background: rgba(220 80 80 / 0.06);
+}
