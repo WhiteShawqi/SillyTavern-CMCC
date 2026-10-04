@@ -23,6 +23,10 @@ import {
     migrateFromLocalStorage, clearLegacyKeys,
     activePersonaOf, nextPersonaId,
 } from './src/state.js';
+import {
+    buildExport, validateImport, countEntries,
+    mergePersona, mergeWorlds,
+} from './src/portable.js';
 
 import {
     WORLD_BOOK, C_IDENTITY, C_SHARED, C_PREFIX_WORLD,
@@ -853,104 +857,37 @@ const api = {
         const p = personaId
             ? (settings.builtins || []).find((x) => x.id === personaId)
             : activePersonaOf(settings);
-        return {
-            _cmcc: true,
-            _version: 1,
-            exportedAt: new Date().toISOString(),
-            manifestVersion: MANIFEST_VERSION,
+        return buildExport({
             persona: p ? {
                 name: p.name, description: p.description,
                 personality: p.personality, scenario: p.scenario,
             } : null,
-            // 全部世界 + 存档 + 记忆（含共同）
-            worlds: JSON.parse(JSON.stringify(CACHE.worlds || {})),
-        };
+            worlds: CACHE.worlds,
+            manifestVersion: MANIFEST_VERSION,
+        });
     },
 
-    /**
-     * 导入：把人设和记忆并进来（不覆盖已有的，冲突时保留两者）
-     * @param {object} obj  exportAll 产出的对象
-     * @param {boolean} [asNewPersona] true = 人设作为新预设加入
-     * @returns {{persona:string, worlds:number, saves:number, entries:number}}
-     */
     async importAll(obj, asNewPersona = false) {
-        if (!obj || !obj._cmcc) {
-            throw new Error('不是 CMCC 导出的文件');
-        }
+        const v = validateImport(obj);
+        if (!v.ok) throw new Error(v.error);
+
         await loadFromBook();
-        let stats = { persona: '', worlds: 0, saves: 0, entries: 0 };
-
-        // ① 人设
-        if (obj.persona && obj.persona.name) {
-            if (asNewPersona) {
-                const item = {
-                    id: nextPersonaId(),
-                    name: obj.persona.name,
-                    description: obj.persona.description || '',
-                    personality: obj.persona.personality || '',
-                    scenario: obj.persona.scenario || '',
-                };
-                settings.builtins = settings.builtins || [];
-                settings.builtins.push(item);
-                settings.activeBuiltinId = item.id;
-                stats.persona = item.name;
-            } else {
-                // 覆盖当前激活项
-                const cur = activePersonaOf(settings);
-                const target = (settings.builtins || []).find((x) => x.id === cur.id);
-                if (target) {
-                    Object.assign(target, {
-                        name: obj.persona.name,
-                        description: obj.persona.description || '',
-                        personality: obj.persona.personality || '',
-                        scenario: obj.persona.scenario || '',
-                    });
-                    stats.persona = target.name;
-                }
-            }
-            settings.personaMode = 'builtin';
-            settings.builtin = Object.assign({}, activePersonaOf(settings));
-        }
-
-        // ② 记忆：并进来。同名存档 → 把不重复的记忆追加进去
-        const incoming = obj.worlds || {};
-        for (const [wKey, w] of Object.entries(incoming)) {
-            if (!w || typeof w !== 'object') continue;
-            if (!CACHE.worlds[wKey]) {
-                CACHE.worlds[wKey] = { label: w.label || wKey, lastSeen: Date.now(), saves: {} };
-                stats.worlds++;
-            }
-            const dst = CACHE.worlds[wKey];
-            if (w.label) dst.label = w.label;
-            dst.saves = dst.saves || {};
-            for (const [sKey, sv] of Object.entries(w.saves || {})) {
-                if (!sv) continue;
-                if (!dst.saves[sKey]) {
-                    dst.saves[sKey] = {
-                        label: sv.label || sKey,
-                        firstSeen: sv.firstSeen || Date.now(),
-                        lastSeen: sv.lastSeen || Date.now(),
-                        entries: [],
-                    };
-                    stats.saves++;
-                }
-                const have = new Set((dst.saves[sKey].entries || []).map((e) => e.text));
-                for (const e of (sv.entries || [])) {
-                    if (!e || typeof e.text !== 'string' || !e.text) continue;
-                    if (have.has(e.text)) continue;      // 去重
-                    have.add(e.text);
-                    dst.saves[sKey].entries.push({ ts: e.ts || Date.now(), text: e.text, kind: e.kind || 'memo' });
-                    stats.entries++;
-                }
-            }
-        }
+        const personaName = mergePersona(settings, obj.persona, asNewPersona, nextPersonaId);
+        const stat = mergeWorlds(CACHE.worlds, obj.worlds);
 
         onSave();
         await saveToBook();
         panel?.refresh();
         api.refreshTop();
-        return stats;
+        return {
+            persona: personaName,
+            worlds: stat.worlds,
+            saves: stat.saves,
+            entries: stat.entries,
+            skipped: stat.skipped,
+        };
     },
+
     /** 切模式 */
     async setPersonaMode(mode) {
         settings.personaMode = mode === 'card' ? 'card' : 'builtin';
