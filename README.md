@@ -434,19 +434,47 @@ body: JSON.stringify(generate_data)
 ## 开发
 
 ```bash
+# Node 测试（假 DOM，不执行 CSS）
 cd tests
-node test_core.mjs      # 183 项核心逻辑测试
+node test_core.mjs        # 286 项
+node _inject_e2e.mjs      #  38 项  端到端注入
+node _cascade_test.mjs    #  32 项  三级级联勾选
+node _persona_test.mjs    #  35 项  多人设 + 迁移
+node _panel_smoke.mjs     #  13 项  面板渲染
+node _click_test.mjs      #   8 项  抽屉交互
+node _topbar_test.mjs     #   2 项  顶部面板渲染
+
+# 真浏览器验证（真实布局 + 真实 CSS）—— 涉及样式改动必跑
+node tests/layout/run.mjs
+node tests/layout/run.mjs --png     # 顺便存截图
 ```
+
+合计 **414 项**（Node）+ 浏览器双页验证。
+详见 [`tests/README.md`](tests/README.md) 与 [`tests/layout/README.md`](tests/layout/README.md)。
+
+### 工具
+
+```bash
+node tools/shot.mjs <网址> --png out.png    # 无头浏览器截图
+node tools/shot.mjs <网址> --title          # 取页面回传的断言结果
+```
+
+关于「为什么不用 PowerShell 调浏览器」——
+见 [`tools/README.md`](tools/README.md)（Edge 正在运行时会转交命令，
+PowerShell 又读不到它的 stdout，两个坑都踩过）。
 
 ### 模块职责
 
 | 文件 | 职责 |
 |---|---|
 | `index.js` | 位置同步、存档切换检测、事件接线、记忆整理、对外 API |
-| `src/state.js` | 设置、标识、记忆模型（增删改）、旧版迁移 |
+| `src/state.js` | 设置、内置人设列表、记忆模型（增删改）、旧版迁移 |
 | `src/store.js` | 世界书读写、条目模板、Markdown 序列化 ↔ 反序列化 |
-| `src/inject.js` | 动态引导组装（含 token 预算）、请求体注入 |
-| `src/ui.js` | 设置面板（含记忆编辑） |
+| `src/inject.js` | 动态引导组装（含 token 预算）、相关记忆检索、请求体注入 |
+| `src/memo.js` | 解析 AI 输出的记忆块（纯文本 / JSON / 旧格式） |
+| `src/summary.js` | 读预设自带 `<summary>` 摘要的能力（当前不接入记忆流程） |
+| `src/ui.js` | 设置面板（人设预设 / 导出导入 / 参数 / 记忆总览） |
+| `src/topbar.js` | 酒馆顶部入口：人设编辑 + 记忆树 + 多选级联 |
 
 ### 数据流
 

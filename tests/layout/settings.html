@@ -2,10 +2,23 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>CMCC 设置页抽屉验证</title>
-<!-- 最小复刻 ST 的关键规则：抽屉内容默认 display:none
-     这就是会和我们 display:grid 打架的那条，必须复刻。 -->
+<title>CMCC 设置页浏览器验证</title>
+<!--
+  浏览器验证页（真实布局 + 真实 CSS）
+  ─────────────────────────────────────
+  为什么需要它：Node 里的假 DOM **不执行 CSS、不做布局**。
+  设置面板"点不开"那个 bug（.inline-drawer-content 上的 padding 干扰）
+  假 DOM 完全测不出来，只有真浏览器能发现。
+
+  用法：
+      node tests/layout/sync.mjs
+      node tools/shot.mjs tests/layout/settings.html --title
+      或  node tests/layout/run.mjs
+
+  结果写在 document.title，格式 CMCC_SETTINGS={...}
+-->
 <style>
+/* 最小复刻 ST 的关键规则 —— 尤其这一条，它是历史 bug 的根源 */
 :root {
     --SmartThemeBlurTintColor: rgba(20, 22, 26, 0.92);
     --SmartThemeBodyColor: #e6e6e6;
@@ -18,6 +31,8 @@ body {
     font-family: 'Microsoft YaHei', sans-serif;
     font-size: var(--mainFontSize);
 }
+/* ★ ST 就靠这条把抽屉收起。我们不能再自己加 padding ——
+   max-height 限制的是内容盒子，padding 加在外面，会残留。 */
 .inline-drawer-content { display: none; }
 .inline-drawer-header {
     display: flex; justify-content: space-between; align-items: center;
@@ -44,84 +59,134 @@ body {
 import { renderPanel } from './ui.js';
 
 const noop = () => {};
+const errors = [];
+
 const ctx = {
     characters: [{ name: '阿米娅', avatar: 'amiya.png' }],
     callGenericPopup: async () => null,
     POPUP_TYPE: { INPUT: 1, CONFIRM: 2, TEXT: 3 },
     toastr: { info: noop, success: noop, warning: noop, error: noop },
 };
-const api = {
-    snapshot: () => ({ bookName: 'CMCC-记忆库',
-        stats: { worldCount: 0, totalEntries: 0, worlds: [] }, shared: [] }),
-    currentPos: () => ({ wKey: 'x', sKey: 's1', wLabel: 'W' }),
-    summarize: noop, reload: async () => {}, setCompanion: async () => {},
-    setBuiltin: async () => {}, setPersonaMode: async () => {},
-    addMemory: async () => {}, cleanEmpty: async () => ({ saves: 0, worlds: 0 }),
-};
+
+// ⚠ 这里必须和 index.js 真正暴露的 api 一致，
+//   少一个方法 renderPanel 就会抛错（旧版这个页面就是这么坏掉的）
 const settings = {
     enabled: true, personaMode: 'builtin',
     builtin: { name: '小满', description: '跟着 {user} 的少女。', personality: '话少。', scenario: '同伴。' },
-    injectMemory: true, memoryBudget: 1800, tokenBudget: 600, saveMemoryLimit: 500,
+    builtins: [
+        { id: 'p1', name: '小满', description: '跟着 {user} 的少女。', personality: '话少。', scenario: '同伴。' },
+        { id: 'p2', name: '阿米娅', description: '罗德岛的领袖。', personality: '沉稳。', scenario: '' },
+    ],
+    activeBuiltinId: 'p1',
+    injectMemory: true, memoryBudget: 1800, tokenBudget: 2400, saveMemoryLimit: 500,
+    recentMemoryLimit: 10, relevantMemoryLimit: 5,
     summarizeEvery: 12, summarizeCooldown: 90, announceSaveSwitch: true,
     syncWorldbook: true, readMemoryCommands: true, debug: false,
 };
 
-renderPanel({ settings, onSave: noop, ctx, api, onOpenTop: noop });
+const api = {
+    snapshot: () => ({
+        bookName: 'CMCC-记忆库',
+        stats: { worldCount: 1, totalEntries: 3, sharedCount: 0, worlds: [
+            { key: 'w1', label: '世界A', saveCount: 1, count: 3,
+              saves: [{ key: 's1', label: '存档1', count: 3 }] },
+        ] },
+        shared: [],
+    }),
+    currentPos: () => ({ wKey: 'w1', sKey: 's1', wLabel: '世界A' }),
+    listPersonas: () => settings.builtins.map((x) => ({
+        id: x.id, name: x.name, active: x.id === settings.activeBuiltinId,
+        descLen: (x.description || '').length,
+    })),
+    setActivePersona: async () => true,
+    addPersona: async () => 'new',
+    deletePersona: async () => true,
+    renamePersona: async () => true,
+    exportAll: async () => ({ _cmcc: true, persona: settings.builtin, worlds: {} }),
+    importAll: async () => ({ persona: 'x', worlds: 0, saves: 0, entries: 0 }),
+    setBuiltin: async () => {}, setPersonaMode: async () => {},
+    summarize: noop, reload: async () => {}, addMemory: async () => {},
+    cleanEmpty: async () => ({ saves: 0, worlds: 0 }),
+};
 
-const panel = document.getElementById('cmcc_settings');
-const content = panel.querySelector('.inline-drawer-content');
-const inner = panel.querySelector('.cmcc-drawer-inner');
-const header = panel.querySelector('.inline-drawer-toggle');
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const result = { errors, ok: false };
 
-function measure(tag) {
-    const cs = getComputedStyle(content);
-    return {
-        tag,
-        state: content.style.maxHeight === '0px' ? 'collapsed' : 'expanded',
-        animated: content.classList.contains('cmcc-animated'),
-        display: cs.display,
-        // ★ 测**父级**的渲染高度。
-        //   内层被 overflow:hidden 裁剪后，它自身的 getBoundingClientRect()
-        //   仍然是完整高度（不是 0），所以不能拿内层当判据。
-        boxH: Math.round(content.getBoundingClientRect().height),
-        inlineMaxH: content.style.maxHeight || '(空)',
-        chevUp: !!panel.querySelector('.inline-drawer-icon.up'),
-    };
+try {
+    renderPanel({ settings, onSave: noop, ctx, api, onOpenTop: noop });
+} catch (e) {
+    errors.push('renderPanel 抛错: ' + (e && e.message));
 }
 
-(async () => {
-    const steps = [];
-    steps.push(measure('初始'));
+try {
+    const panel = document.getElementById('cmcc_settings');
+    const content = panel && panel.querySelector('.inline-drawer-content');
+    const header = panel && panel.querySelector('.inline-drawer-toggle');
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-    header.click();                 // → 收起
-    await sleep(400);
-    steps.push(measure('点1次'));
+    if (!panel || !content || !header) {
+        errors.push('骨架不完整: panel=' + !!panel + ' content=' + !!content + ' header=' + !!header);
+    } else {
+        const H = () => Math.round(content.getBoundingClientRect().height);
+        const D = () => getComputedStyle(content).display;
+        const chevUp = () => !!panel.querySelector('.inline-drawer-icon.up');
 
-    header.click();                 // → 展开
-    await sleep(400);
-    steps.push(measure('点2次'));
+        const step = (tag) => ({ tag, h: H(), display: D(), up: chevUp() });
 
-    header.click();                 // → 再收起
-    await sleep(400);
-    steps.push(measure('点3次'));
+        const steps = [];
+        steps.push(step('初始'));
+        header.click();
+        await sleep(350);
+        steps.push(step('点1次'));
+        header.click();
+        await sleep(350);
+        steps.push(step('点2次'));
+        header.click();
+        await sleep(350);
+        steps.push(step('点3次'));
 
-    const openH = steps[0].boxH;
-    const out = {
-        steps,
-        initExpanded: steps[0].boxH > 0 && steps[0].state === 'expanded',
-        initNoAnim: steps[0].animated === false,
-        collapseZero: steps[1].boxH <= 8,   // 内边距可能残留几个 px
-        // 用「明显变大」做判据：openH 是未启用过渡时的自然高度，
-        // 启用过渡后 max-height 会放开，高度可能略有不同（含内边距）
-        expandRestored: steps[2].boxH > openH * 0.9,
-        reCollapseZero: steps[3].boxH <= 708,   // 这次测点在过渡中，只确认它开始收
-        chevToggles: steps[0].chevUp === true && steps[1].chevUp === false
-                  && steps[2].chevUp === true && steps[3].chevUp === false,
-    };
-    document.title = 'CMCC_SETTINGS=' + JSON.stringify(out);
-    console.log(document.title);
-})();
+        result.steps = steps;
+        result.initExpanded = steps[0].h > 0 && steps[0].display === 'block';
+        result.collapseHidden = steps[1].display === 'none' && steps[1].h === 0;
+        result.expandRestored = steps[2].display === 'block' && steps[2].h > 0;
+        result.reCollapseHidden = steps[3].display === 'none' && steps[3].h === 0;
+        result.chevToggles = steps[0].up && !steps[1].up && steps[2].up && !steps[3].up;
+
+        // 结构检查
+        result.hasPersonaBar = !!panel.querySelector('.cmcc-pbar');
+        result.personaOptions = panel.querySelectorAll('option').length;
+        result.hasOverview = !!panel.querySelector('.cmcc-ov-head');
+        result.bars = panel.querySelectorAll('.cmcc-pbar').length;
+
+        // ★ 全局扫一遍：有没有元素因为父级被裁而"看不见"
+        //   （这正是 padding + max-height 那个 bug 的形态）
+        const contentRect = content.getBoundingClientRect();
+        const visibles = [...content.querySelectorAll('*')].filter((el) => {
+            const r = el.getBoundingClientRect();
+            return r.height > 0 && r.width > 0;
+        });
+        result.visibleDescendants = visibles.length;
+
+        result.ok = errors.length === 0
+            && result.initExpanded && result.collapseHidden
+            && result.expandRestored && result.reCollapseHidden
+            && result.chevToggles && result.hasPersonaBar
+            && result.personaOptions === 2 && result.bars === 2;
+    }
+} catch (e) {
+    errors.push('检查过程抛错: ' + (e && e.message));
+}
+
+// 结果同时写进 title（给 tools/shot.mjs --title 读）和页面，便于人眼看
+document.title = 'CMCC_SETTINGS=' + JSON.stringify(result);
+try { console.log(document.title); } catch (e) {}
+
+const pre = document.createElement('pre');
+pre.id = 'cmcc_result';
+pre.style.cssText = 'margin-top:12px;padding:8px;background:#111;color:#9f9;font-size:12px;'
+    + 'white-space:pre-wrap;border-radius:4px';
+pre.textContent = '结果: ' + (result.ok ? '全部通过 ✓' : '有失败 ✗') + '\n'
+    + JSON.stringify(result, null, 2);
+document.body.appendChild(pre);
 </script>
 </body>
 </html>

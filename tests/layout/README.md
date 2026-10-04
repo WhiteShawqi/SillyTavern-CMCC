@@ -1,84 +1,97 @@
-# 布局验证测试
+# 浏览器验证
 
-验证 CMCC 顶部面板与图标的两个关键布局问题。**这两条都实际出过 bug。**
+用**真的无头浏览器**跑真实布局和真实 CSS，验证那些假 DOM 测不出来的东西。
 
 ## 为什么需要它
 
-CMCC 的顶部入口插进 ST 的 `#top-settings-holder`，那里的布局是：
+Node 里的假 DOM **不执行 CSS、不做布局**。
 
-```css
-#top-settings-holder { display: flex; justify-content: center; width: var(--sheldWidth); }
-.drawer              { display: flex; flex-flow: row; width: 100%; }
-.drawer-content      { display: none; position: absolute; top: var(--topBarBlockSize); }
-.drawer-content.openDrawer { display: block; }
-```
+设置面板「点不开」那个 bug 就是例子：我在 `.inline-drawer-content` 上写了
+`padding-top: 6px`，而 `max-height` 限制的是**内容盒子**、padding 加在外面 ——
+假 DOM 完全测不出来（它只验证 JS 逻辑），最后靠你在浏览器里跑诊断脚本才定位。
 
-### 坑 1：面板被压扁成竖排
-
-`.drawer-content` 靠 `position: absolute` **脱离 flex 流**。
-如果扩展 CSS 覆盖了 `display` 或 `position`，面板就掉进流里，
-被 `--sheldWidth` 挤成一条竖线 —— **每个字一行**。
-
-> 实际触发原因：在 `.cmcc-top-head` 上写了 `position: sticky`，
-> sticky 在未显式指定 position 的父级下退化成相对定位，把面板拉回了流里。
-
-### 坑 2：图标错位
-
-每个 `.drawer` 都是 `width: 100%`，**靠 flex 默认的 `shrink` 平摊成一排**。
-一旦给我们的 drawer 加 `flex: 0 0 auto`（禁止收缩），它会独占 100% 宽，
-图标被挤到最右边。
-
-> 实测：`drawerWidths: [38,46,41,46,44,41,47,47,36,688]` —— 最后一个 688px 就是 CMCC。
+**结论：涉及布局 / 样式 / 真实渲染的问题，必须用真浏览器。**
 
 ## 怎么跑
 
 ```bash
-cd tests/layout
-cp ../../src/topbar.js .          # 模拟 ST 的加载方式
-cp ../../style.css .              # 测试页要引用它（见下方"注意"）
-python -m http.server 8899
+# 一键（自动同步 + 起服务器 + 跑页面 + 关服务器）
+node tests/layout/run.mjs
 
-"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" \
-  --headless=new --disable-gpu --no-sandbox --incognito --hide-scrollbars \
-  --virtual-time-budget=6000 --window-size=1400,780 \
-  --screenshot=_render/panel.png http://127.0.0.1:8899/index.html
+# 顺便存截图到 tests/layout/_render/
+node tests/layout/run.mjs --png
 
-# 读断言（结果写在 document.title 里）
-"C:\...\msedge.exe" --headless=new --disable-gpu --no-sandbox \
-  --virtual-time-budget=6000 --dump-dom http://127.0.0.1:8899/index.html
+# 跑完不关服务器，自己打开看
+node tests/layout/run.mjs --keep
 ```
 
-## 断言
+它会打印：
 
-| 字段 | 期望 | 守住什么 |
-|---|---|---|
-| `panelPosition` | `absolute` | **坑 1**：未被覆盖，面板脱离 flex 流 |
-| `panelDisplay` | `block` | 同上 |
-| `headIsSingleLine` | `true` | 标题栏 < 60px，说明没竖排 |
-| `hostNotStretched` | `true` | host 高度 ≤ 50px，面板确实脱离流 |
-| `drawerWidths` | 各项**彼此接近** | **坑 2**：图标等宽不错位 |
-| `iconCount` / `drawerCount` | 10 | CMCC 图标插入成功 |
-| `openState` | `true` | 可展开 |
-| `bodyChildCount` | > 0 | 面板内容真的渲染出来了 |
-
-一次通过的实测值：
-
-```json
-{"panelDisplay":"block","panelPosition":"absolute","panelWidth":586,
- "headHeight":27,"hostHeight":42,"iconCount":10,
- "drawerCount":10,"drawerWidths":[69,69,69,69,69,69,69,69,69,69],
- "headIsSingleLine":true,"hostNotStretched":true,
- "okDisplay":true,"okPosition":true,"openState":true}
+```
+③ 顶部面板  (index.html)
+  ✓ 全部通过
+    ✓ drawerExists = true
+      drawerWidths = [164,164,164,164,164]
+    ✓ widthsBalanced = true
+    ...
 ```
 
-## 注意（踩过的坑）
+## 手动跑单个页面
 
-1. **`file://` 下 ES module 会被 CORS 拦** —— 必须走 http。
-2. **`http.server` 不允许 `..` 路径穿越** —— 测试页原来写
-   `<link href="../style.css">` 会 404，导致**扩展 CSS 根本没被加载**，
-   而当时的断言仍然"通过"（因为 ST 基础样式足够让面板显示）。
-   → 所以现在把 `style.css` 复制一份到 `tests/layout/` 里引用。
-   **跑之前记得同步**（或用脚本自动复制）。
-3. **测试页的 CSS 是最小复刻**，不是 ST 的完整 `style.css`。
-   只抄决定布局的那几条 —— 目的是隔离验证样式冲突，不是还原视觉。
-4. 假数据走的是**真实的 `renderTopPanel`**，所以它同时在验证渲染逻辑不抛错。
+```bash
+node tests/layout/sync.mjs          # 先从 src/ 复制依赖过来
+node tools/shot.mjs tests/layout/settings.html --title     # 只取断言结果
+node tools/shot.mjs http://127.0.0.1:8899/index.html --png shot.png   # 截图
+```
+
+## 两个页面各验证什么
+
+### `index.html` —— 顶部面板（`renderTopPanel`）
+
+| 断言 | 守住什么 |
+|---|---|
+| `drawerWidths` 各项接近 | **图标错位**：我们的 drawer 不能把别人挤歪<br>（曾经写过 `flex:0 0 auto`，实测 `[…,688]`，最后一个独占宽） |
+| `panelPosition === 'absolute'` | **面板被压成竖排**：`.drawer-content` 靠 absolute 脱离 flex 流，<br>一旦被覆盖（曾在 `.cmcc-top-head` 写 `position:sticky`）就掉回流里被挤成一条竖线 |
+| `panelWideEnough`（≥380px） | 同上，宽度不够就是竖排的前兆 |
+| `bodyChildren > 0` | 面板内容真的渲染出来了 |
+| `hasWorldRow` / `hasSaveRow` / `hasEntryRow` | 记忆树三级都在 |
+
+### `settings.html` —— 设置页抽屉（`renderPanel`）
+
+| 断言 | 守住什么 |
+|---|---|
+| `initExpanded` | 首屏是展开的 |
+| `collapseHidden` | 点一次：`display:none` 且高度 0 |
+| `expandRestored` | 再点：`display:block` 且高度回来 |
+| `reCollapseHidden` | 第三次：又收起来 |
+| `chevToggles` | 箭头跟着切 |
+| `hasPersonaBar` / `personaOptions` / `bars` | 人设预设栏 + 导出导入栏都在 |
+
+> **这里刻意不复刻动画。** ST 自己的 `toggleDrawer` 就是纯 `display` 切换，
+> 我之前自作聪明加的 `max-height` 动画反而是 bug 源头。
+
+## 关键实现细节（踩过的坑）
+
+1. **必须用独立 `--user-data-dir`**
+   你的 Edge 正在运行时，Edge 会把命令**转交给那个实例**并弹
+   「请在现有浏览器会话中打开」，headless 根本不执行 → 拿不到任何输出。
+   见 `tools/browser.mjs`，它每次生成一个临时配置目录并跑完删掉。
+
+2. **必须用 Node 起进程，不能用 PowerShell 的 `&`**
+   `& $msedge --dump-dom URL` 在这个环境下**拿不到 stdout**，
+   而且要显式 `-RedirectStandardOutput` 才行。
+   Node 的 `execFile` 读管道干净可靠，所以工具是 `.mjs` 不是 `.ps1`。
+
+3. **测试页只能 import 同目录文件**
+   `http.server` 拒绝 `..` 目录穿越；`file://` 又因 CORS 挡 ES module。
+   所以 `sync.mjs` 把 `src/*.js` 和 `style.css` 复制到 `tests/layout/`。
+   **这些副本已写进 `.gitignore`，不入库**，改了 src 后重新 sync 即可。
+
+4. **页面把断言结果写进 `document.title`**
+   格式 `CMCC_TOPBAR={...}` / `CMCC_SETTINGS={...}`，
+   用 `tools/shot.mjs ... --title` 就能读回来。
+   同时也会渲染到页面上（`#cmcc_result`），方便人眼看。
+
+5. **测试页里的 `api` 必须和 `index.js` 真正暴露的一致**
+   少一个方法 `renderPanel` 就会抛错 —— 旧版这个页面就是这么坏掉的
+   （加了人设预设功能后，页面里的 api 没有 `listPersonas`）。

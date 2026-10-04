@@ -41,6 +41,24 @@ node _topbar_test.mjs     # 顶部面板渲染
 > 之前设置面板展不开（`.inline-drawer-content` 上的 padding 干扰 max-height）
 > 就是假 DOM 测不出来、靠真人跑浏览器诊断脚本才定位的。
 
+## 浏览器验证（`tests/layout/`）
+
+上面的都是 Node 假 DOM，**不执行 CSS、不做布局**。
+真浏览器验证在 `tests/layout/`：
+
+```bash
+node tests/layout/run.mjs        # 一键：同步 + 起服务器 + 跑 + 关
+node tests/layout/run.mjs --png  # 顺便存截图
+```
+
+| 页面 | 验证 |
+|---|---|
+| `index.html` | 顶部面板：图标宽度平衡、面板没被压成竖排、三级记忆树渲染 |
+| `settings.html` | 设置页抽屉：展开/收起真的切换 display、人设栏与导出栏都在 |
+
+详见 [`layout/README.md`](layout/README.md)。
+**涉及样式和布局的改动，一定要跑这个。**
+
 ## `_budget_measure.mjs`
 
 不是断言型测试，是**量数据的脚本**：打印一个完整人设 + 20 条记忆实际占多少 token，

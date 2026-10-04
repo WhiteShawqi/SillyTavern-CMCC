@@ -2,6 +2,16 @@ node_modules/
 *.log
 .DS_Store
 _notes/
-tests/layout/_render/
-tests/layout/topbar.js
 .github-username
+
+# tests/layout/ 下的这些文件是 tools 从 src/ 复制来的（node tests/layout/sync.mjs）
+# 不要入库 —— 改了 src/ 之后重新 sync 即可
+tests/layout/ui.js
+tests/layout/topbar.js
+tests/layout/inject.js
+tests/layout/state.js
+tests/layout/store.js
+tests/layout/memo.js
+tests/layout/summary.js
+tests/layout/style.css
+tests/layout/_render/
