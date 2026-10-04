@@ -551,3 +551,21 @@
 
 .cmcc-world-head:hover,
 .cmcc-save-head:hover { background: rgba(127 127 127 / 0.08); }
+
+/* ── 设置页抽屉的展开/收起过渡 ──
+   只在用户点过之后才启用（JS 加 .cmcc-animated），首屏不播动画。
+
+   为什么不用 grid-template-rows: 0fr/1fr：
+     试过，收起正常，但**展开时算不回内层的固有高度**
+     （内层被 overflow:hidden + 0fr 压过之后，轨道高度回不到 1fr），
+     实测展开后高度停在 0。
+   改用 JS 测高度 + max-height：方向一定正确，能来回切。 */
+.cmcc-panel .inline-drawer-content.cmcc-animated {
+    overflow: hidden !important;
+    transition: max-height 0.22s ease;
+}
+
+/* 过渡期间由 JS 设 max-height；不设 class 时不要限制 */
+.cmcc-panel .inline-drawer-content.cmcc-animated > .cmcc-drawer-inner {
+    min-height: 0;
+}

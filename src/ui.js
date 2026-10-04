@@ -10,6 +10,12 @@
 
 const ID = 'cmcc_settings';
 
+/**
+ * 设置页抽屉的展开状态（模块级，跨重渲染保持）
+ * 之前每次 renderPanel 都重置成"展开"，用户收起后一改设置又自己弹开。
+ */
+let SETTINGS_EXPANDED = true;
+
 function el(tag, cls, html) {
     const e = document.createElement(tag);
     if (cls) e.className = cls;
@@ -43,6 +49,9 @@ export function renderPanel(o) {
     drawer.appendChild(toggle);
 
     const content = el('div', 'inline-drawer-content');
+    // 过渡用 grid 0fr/1fr，需要一层 overflow:hidden 的内层
+    const inner = el('div', 'cmcc-drawer-inner');
+    content.appendChild(inner);
     drawer.appendChild(content);
     root.appendChild(drawer);
 
@@ -50,20 +59,67 @@ export function renderPanel(o) {
     // 关键：它操作的是 content 的**内联 display**，不是 class。
     // 我上一版用了 displayNone class，而 .inline-drawer-content 默认就是 display:none，
     // 所以切换 class 没有任何效果 → 表现为"收不起来"。
-    let expanded = true;
+    /**
+     * 展开 / 收起
+     *
+     * 用 JS 测内层高度 + 设 max-height 做过渡：
+     *   · 方向一定正确（展开 max-height 设为实际高度，收起设为 0）
+     *   · 不用猜高度，内容多高都行
+     * 为什么不用纯 CSS 的 grid 0fr/1fr：收起正常，但展开时算不回固有高度。
+     */
     const applyExpand = (open) => {
-        expanded = open;
+        SETTINGS_EXPANDED = open;
         if (open) {
             chev.classList.remove('down', 'fa-circle-chevron-down');
             chev.classList.add('up', 'fa-circle-chevron-up');
-            content.style.display = 'block';
+            if (!content.classList.contains('cmcc-animated')) {
+                // 未启用过渡（首屏 / 恢复状态）：直接显示，不播动画
+                content.style.display = 'block';
+                content.style.maxHeight = '';
+            } else {
+                content.style.display = 'block';
+                content.style.maxHeight = '0px';
+                void content.offsetHeight;                    // 落实起点
+                content.style.maxHeight = (inner.scrollHeight + 8) + 'px';
+                // 过渡结束后放开限制，免得内容长高了被卡住
+                clearTimeout(content._cmccT);
+                content._cmccT = setTimeout(() => {
+                    if (SETTINGS_EXPANDED) content.style.maxHeight = '';
+                }, 260);
+            }
         } else {
             chev.classList.remove('up', 'fa-circle-chevron-up');
             chev.classList.add('down', 'fa-circle-chevron-down');
-            content.style.display = 'none';
+            if (!content.classList.contains('cmcc-animated')) {
+                content.style.display = 'none';
+            } else {
+                // scrollHeight 不含内边距，收起时要把它一起算进去，
+                // 否则会残留内边距那么高（实测约 6px）
+                const cs = getComputedStyle(content);
+                const pad = (parseFloat(cs.paddingTop) || 0)
+                          + (parseFloat(cs.paddingBottom) || 0);
+                content.style.maxHeight = (content.scrollHeight + pad) + 'px';
+                void content.offsetHeight;
+                content.style.maxHeight = '0px';
+            }
         }
     };
-    toggle.addEventListener('click', () => applyExpand(!expanded));
+    const toggleHandler = () => {
+        // 第一次点击才启用过渡，并用内联 display 把当前状态落实（首屏不播动画）
+        if (!content.classList.contains('cmcc-animated')) {
+            content.style.display = 'block';
+            content.style.maxHeight = '';
+            content.classList.add('cmcc-animated');
+            void content.offsetHeight;
+        }
+        applyExpand(!SETTINGS_EXPANDED);
+    };
+    toggle.addEventListener('click', toggleHandler);
+
+    // ★ 关键：在插入 DOM **之前**就把初始状态定好（首屏不播动画）。
+    //   之前写成 appendChild 之后才 applyExpand，浏览器会从基础样式的
+    //   display:none 过渡过来，看着像「先播了一遍展开动画」。
+    applyExpand(SETTINGS_EXPANDED);
 
     // ── 启用开关（放在标题行，收起时也能操作）──
     const sw = el('label', 'cmcc-switch cmcc-switch-inline');
@@ -230,7 +286,7 @@ export function renderPanel(o) {
     };
     actRow.appendChild(bClean);
     sec1.appendChild(actRow);
-    content.appendChild(sec1);
+    inner.appendChild(sec1);
 
     // ── 行为 ──
     const sec2 = el('div', 'cmcc-sec');
@@ -280,14 +336,14 @@ export function renderPanel(o) {
     row2.appendChild(mkNum('记忆预算', 'memoryBudget', 200, 20000,
         '记忆注入的 token 上限；记忆很多时按此截断'));
     sec2.appendChild(row2);
-    content.appendChild(sec2);
+    inner.appendChild(sec2);
 
     // ── 记忆总览 ──
     const sec3 = el('div', 'cmcc-sec');
     sec3.appendChild(el('div', 'cmcc-sec-title', '记忆总览'));
     const stats = el('div', 'cmcc-stats');
     sec3.appendChild(stats);
-    content.appendChild(sec3);
+    inner.appendChild(sec3);
 
     /** 角色创建后自动刷新下拉（ST 建角色是异步的） */
     function pollForNewCharacter(round = 0) {
@@ -353,8 +409,7 @@ export function renderPanel(o) {
 
     const host = document.getElementById('extensions_settings2')
         || document.getElementById('extensions_settings');
-    host?.appendChild(root);
-    applyExpand(true);   // 默认展开
+    host?.appendChild(root);   // 初始状态已在上方定好，这里不再改（改了会触发过渡）
     return {
         refresh,
         expand: () => applyExpand(true),
