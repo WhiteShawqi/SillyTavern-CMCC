@@ -268,36 +268,51 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
         return;
     }
 
-    const comp = (ctx.characters || []).find((c) => c && c.avatar === snap.companionAvatar);
-    const compName = comp?.name || '（未选择陪伴角色）';
+    const isBuiltin = snap.personaMode === 'builtin';
+    const comp = isBuiltin
+        ? null
+        : (ctx.characters || []).find((c) => c && c.avatar === snap.companionAvatar);
+    const compName = isBuiltin
+        ? (snap.companionName || '（未填写人设）')
+        : (comp?.name || '（未选择陪伴角色）');
 
     // ── 当前陪伴者 ──
     const who = el('div', 'cmcc-top-who');
     who.innerHTML = `<span class="cmcc-top-who-label">当前陪伴者</span>`
-        + `<span class="cmcc-top-who-name">${compName}</span>`;
+        + `<span class="cmcc-top-who-name">${compName}</span>`
+        + `<span class="cmcc-top-who-tag">${isBuiltin ? '内置' : '角色卡'}</span>`;
     const switchBtn = el('button', 'menu_button cmcc-mini', '切换 →');
     switchBtn.title = '到扩展设置页切换（和酒馆助手同位置）';
     switchBtn.onclick = () => { closeDrawer(); onGotoSettings(); };
     who.appendChild(switchBtn);
     body.appendChild(who);
 
-    // 未选陪伴者：给一个明确的引导块（不要只留一行，容易被误认为"面板是空的"）
-    if (!snap.companionAvatar) {
+    // 没设好陪伴者：给明确引导
+    if (!snap.hasCompanion) {
         const tip = el('div', 'cmcc-top-section cmcc-empty-state');
-        tip.innerHTML = [
-            '<div style="font-weight:bold;margin-bottom:6px;">还没有选择陪伴角色</div>',
-            '<div style="opacity:.85;line-height:1.7;">',
-            '① 点上面的「切换 →」跳到扩展设置<br>',
-            '② 在「陪伴角色卡」里选一张卡<br>',
-            '③ 勾上「启用」<br>',
-            '④ 把 <code>CMCC-记忆库</code> 设为世界书（勾起「全局」）<br>',
-            '⑤ 回到这里，人设与记忆就会显示出来',
-            '</div>',
-        ].join('');
+        tip.innerHTML = isBuiltin
+            ? [
+                '<div style="font-weight:bold;margin-bottom:6px;">还没填写内置人设</div>',
+                '<div style="opacity:.85;line-height:1.7;">',
+                '① 点「切换 →」跳到扩展设置<br>',
+                '② 在「内置角色（独立）」里写名字和描述<br>',
+                '③ 勾上「启用」<br>',
+                '④ 回来这里就能看到人设和记忆（不用挂世界书）',
+                '</div>',
+            ].join('')
+            : [
+                '<div style="font-weight:bold;margin-bottom:6px;">还没有选择陪伴角色</div>',
+                '<div style="opacity:.85;line-height:1.7;">',
+                '① 点「切换 →」跳到扩展设置<br>',
+                '② 在「用已有角色卡」里选一张卡（或用「+ 创建新角色」）<br>',
+                '③ 勾上「启用」<br>',
+                '④ 建议把 <code>CMCC-记忆库</code> 勾起「全局」，AI 才读得到',
+                '</div>',
+            ].join('');
         body.appendChild(tip);
 
         const tools0 = el('div', 'cmcc-btns');
-        const bGo = el('button', 'menu_button cmcc-wide-btn', '去选陪伴角色');
+        const bGo = el('button', 'menu_button cmcc-wide-btn', '去设置');
         bGo.onclick = () => { closeDrawer(); onGotoSettings(); };
         tools0.appendChild(bGo);
         const bDiag = el('button', 'menu_button cmcc-mini', '诊断信息');
@@ -313,16 +328,21 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
         return;
     }
 
-    // 已选角色：若记忆世界书没被挂载，提醒一次（否则 AI 读不到记忆）
-    if (snap.stats.totalEntries > 0 && !isWorldBookActive(ctx, snap.bookName)) {
+    // 记忆是否真的能被她读到？
+    //   注入开  → 直接进提示词，**不需要**挂世界书
+    //   注入关  → 只能靠世界书，必须挂载
+    const injectionOn = snap.injectMemory !== false;
+    const bookActive = isWorldBookActive(ctx, snap.bookName);
+    if (snap.stats.totalEntries > 0 && !injectionOn && !bookActive) {
         const warnBox = el('div', 'cmcc-top-section cmcc-warn');
-        warnBox.innerHTML = '<b>⚠ 记忆世界书未挂载</b><br>'
-            + '<span style="opacity:.85">记忆存在 <code>' + snap.bookName + '</code> 里，'
-            + '需要把它勾成<b>全局世界书</b>（或挂到当前聊天），AI 才读得到。</span>';
+        warnBox.innerHTML = '<b>⚠ 记忆可能读不到</b><br>'
+            + '<span style="opacity:.85">你关掉了「注入记忆」，所以只能靠世界书。'
+            + '请把 <code>' + snap.bookName + '</code> 勾成<b>全局世界书</b>'
+            + '（或挂到当前聊天），否则 AI 看不到记忆。</span><br>'
+            + '<span style="opacity:.7">或者打开「注入记忆」，就不需要挂世界书了。</span>';
         const bFix = el('button', 'menu_button cmcc-mini', '去挂载');
         bFix.onclick = () => {
             try {
-                // 打开 ST 的世界书面板，让用户勾选
                 const icon = document.querySelector('#WI-SP-button .drawer-toggle');
                 if (icon && !document.getElementById('WorldInfo')?.classList.contains('openDrawer')) {
                     icon.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -332,29 +352,48 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
         };
         warnBox.appendChild(bFix);
         body.appendChild(warnBox);
+    } else if (snap.stats.totalEntries > 0 && injectionOn) {
+        // 注入模式：给个安心提示（很多用户会以为还得挂世界书）
+        const okBox = el('div', 'cmcc-top-section cmcc-ok');
+        okBox.innerHTML = '<b>✓ 记忆已直接注入</b> '
+            + '<span style="opacity:.8">不需要挂载世界书。'
+            + (bookActive ? '（世界书也已挂载，双保险）' : '')
+            + '</span>';
+        body.appendChild(okBox);
     }
 
-    // ── 人设（可直接改，改的是卡本身）──
+    // ── 人设（可直接改）──
+    //   内置模式 → 改的是扩展设置里的内置人设（不碰角色卡库）
+    //   角色卡模式 → 改的是角色卡本身
     const personaBox = el('div', 'cmcc-top-section');
     const ph = el('div', 'cmcc-top-sec-head');
-    ph.innerHTML = '<b>人设</b>';
+    ph.innerHTML = `<b>人设</b><span class="cmcc-meta">${isBuiltin ? '内置' : '角色卡'}</span>`;
     const reloadP = el('button', 'cmcc-x', '⟳');
     reloadP.title = '刷新';
     reloadP.onclick = () => renderTopPanel({ ctx, api, onGotoSettings });
     ph.appendChild(reloadP);
     personaBox.appendChild(ph);
 
-    const d = comp?.data || {};
-    const fields = [
-        ['description', '角色描述', d.description || ''],
-        ['personality', '性格', d.personality || ''],
-        ['scenario', '场景', d.scenario || ''],
-        ['first_mes', '开场白', d.first_mes || ''],
-    ];
+    const d = isBuiltin ? (snap.builtin || {}) : (comp?.data || {});
+    const fields = isBuiltin
+        ? [
+            ['name', '名字', d.name || ''],
+            ['description', '角色描述', d.description || ''],
+            ['personality', '性格', d.personality || ''],
+            ['scenario', '与你的关系', d.scenario || ''],
+        ]
+        : [
+            ['description', '角色描述', d.description || ''],
+            ['personality', '性格', d.personality || ''],
+            ['scenario', '场景', d.scenario || ''],
+            ['first_mes', '开场白', d.first_mes || ''],
+        ];
     for (const [key, label, val] of fields) {
         const row = el('div', 'cmcc-field');
         const lab = el('label', 'cmcc-field-label', label);
-        lab.title = '点击编辑（会直接改角色卡，记得在角色管理里保存）';
+        lab.title = isBuiltin
+            ? '点击编辑（存进扩展设置，不碰角色卡）'
+            : '点击编辑（会直接改角色卡，记得在角色管理里保存）';
         row.appendChild(lab);
         const txt = el('div', 'cmcc-field-val',
             (val || '（空）').slice(0, 160) + (val && val.length > 160 ? ' …' : ''));

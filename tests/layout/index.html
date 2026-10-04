@@ -130,6 +130,13 @@ const fakeCtx = {
 const fakeApi = {
     snapshot: () => ({
         bookName: 'CMCC-记忆库',
+        personaMode: 'builtin',
+        companionName: '小满',
+        hasCompanion: true,
+        injectMemory: true,
+        syncWorldbook: true,
+        builtin: { name: '小满', description: '一个总是跟着 {user} 的少女。',
+                   personality: '话少，但记得每一件小事。', scenario: '她不是任何世界的人。' },
         companionAvatar: 'amiya.png',
         shared: [],
         stats: {
@@ -199,6 +206,16 @@ function measure() {
         okDisplay: cs.display === 'block',
         okPosition: cs.position === 'absolute',
         openState: isTopPanelOpen(),
+        // ★ 内置模式渲染检测
+        bodyText: (() => {
+            const b = document.getElementById('cmcc-top-panel_body');
+            return (b?.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+        })(),
+        hasBuiltinTag: (() => {
+            const b = document.getElementById('cmcc-top-panel_body');
+            return !!b?.querySelector('.cmcc-top-who-tag');
+        })(),
+        personaFieldCount: document.querySelectorAll('#cmcc-top-panel_body .cmcc-field').length,
         // ★ 按钮是否横排：同一排按钮的 top 应该接近
         btnTops: [...document.querySelectorAll('#cmcc-top-panel_body .cmcc-btns button')]
             .map(b => Math.round(b.getBoundingClientRect().top)),

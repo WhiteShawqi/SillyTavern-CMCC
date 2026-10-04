@@ -24,7 +24,7 @@ const {
     renameSave, deleteSave, renameWorld,
     worldStats, bookStats,
     migrateFromLocalStorage, clearLegacyKeys,
-    DEFAULT_SETTINGS,
+    DEFAULT_SETTINGS, normalizeSettings,
 } = await import('../src/state.js');
 
 const {
@@ -35,7 +35,7 @@ const {
 
 const {
     buildGuide, injectIntoRequest, stripFromMessages, estimateTokens,
-    buildRules, buildWhereBlock, TAG,
+    buildRules, buildWhereBlock, buildMemoryBlock, buildInjectionText, TAG,
 } = await import('../src/inject.js');
 
 let pass = 0, fail = 0;
@@ -190,7 +190,7 @@ chk(guide.includes('存档1'), '含当前存档');
 chk(guide.includes('存档2'), '提到另一次经历');
 chk(guide.includes('记得一切'), '含「记得一切」');
 chk(guide.includes('不要混淆'), '含「不要混淆」');
-chk(guide.includes('CMCC'), '提到记忆在世界书里');
+chk(guide.includes('记忆正文') || guide.includes('按「世界」和「第几次」'), '提到记忆按世界/次数分组');
 chk(/人设|合人设/.test(guide), '★ 含「按人设决定是否提及」');
 chk(guide.includes('不要说"世界书"') || guide.includes('不要提元语言'), '含禁止元语言');
 
@@ -273,5 +273,89 @@ localStorage.setItem('cc_memory_v1', JSON.stringify({
 }));
 const leg1 = migrateFromLocalStorage();
 chk(leg1.worlds['char:V1.png'].saves.legacy.entries[0].text === 'v1记忆', 'v1 世界记忆迁入存档');
+
+// ── 11. 内置陪伴角色（独立于角色卡库）──
+console.log('【11】内置陪伴角色');
+const builtin = {
+    name: '小满',
+    isBuiltin: true,
+    data: {
+        name: '小满',
+        description: '一个总是跟着 {user} 的少女。',
+        personality: '话少，但记得每一件小事。',
+        scenario: '她不是任何世界的人，只是 {user} 的同伴。',
+    },
+};
+const bg = buildGuide({
+    companion: builtin, wLabel: '全球冰封', saveLabel: '存档1',
+    saveCount: 1, otherSaveLabels: [], settings: S(), saveSwitched: false,
+});
+chk(bg.includes('小满'), '内置人设：名字进入引导');
+chk(bg.includes('总是跟着'), '内置人设：description 进入引导');
+chk(bg.includes('话少'), '内置人设：personality 进入引导');
+chk(bg.includes('不是任何世界的人'), '★ 内置人设：scenario 也进入引导（新增）');
+console.log('');
+
+// ── 12. 记忆直接注入（不依赖世界书）──
+console.log('【12】记忆直接注入');
+const memModel = {
+    worlds: {
+        'char:A.png': {
+            label: '全球冰封 v3.1.3', lastSeen: 3, saves: {
+                s1: { label: '存档1', lastSeen: 3, entries: [
+                    { ts: 1, text: '在避难所里冻了一夜' },
+                    { ts: 2, text: '找到一箱罐头' },
+                ] },
+                s2: { label: '存档2', lastSeen: 2, entries: [{ ts: 3, text: '这次直接进了地堡' }] },
+            },
+        },
+        'char:B.png': {
+            label: '漫综：世界观', lastSeen: 1, saves: {
+                sx: { label: '存档1', lastSeen: 1, entries: [{ ts: 4, text: '进了万魔殿' }] },
+            },
+        },
+        __shared__: { label: '共同', lastSeen: 1, saves: { common: { label: '共同', entries: [{ ts: 5, text: 'USER 怕冷' }] } } },
+    },
+};
+const mb = buildMemoryBlock({
+    mem: memModel, wKey: 'char:A.png', sKey: 's1', wLabel: '全球冰封 v3.1.3',
+    budget: 1800,
+});
+chk(mb.includes('当前位置：全球冰封 v3.1.3 / 存档1'), '★ 标明当前世界与存档');
+chk(mb.includes('在避难所里冻了一夜'), '含当前存档记忆');
+chk(mb.includes('地堡'), '★ 含同世界其他存档（标为另外一次经历）');
+chk(mb.includes('另外一次经历'), '标注了是同世界的另一次');
+chk(mb.includes('万魔殿'), '★ 含其他世界的记忆');
+chk(mb.includes('USER 怕冷'), '含共同记忆');
+chk(!mb.includes('<cmcc_guide>'), '记忆块不带引导标记');
+
+// 预算截断
+const big = { worlds: { w: { label: 'W', lastSeen: 1, saves: { s: { label: 's', lastSeen: 1,
+    entries: Array.from({ length: 500 }, (_, i) => ({ ts: i, text: '第' + i + '条' + '啊'.repeat(30) })) } } } } };
+const mSmall = buildMemoryBlock({ mem: big, wKey: 'w', sKey: 's', wLabel: 'W', budget: 500 });
+const mLarge = buildMemoryBlock({ mem: big, wKey: 'w', sKey: 's', wLabel: 'W', budget: 6000 });
+chk(estimateTokens(mSmall) <= 750, '小记忆预算受控（约 ' + estimateTokens(mSmall) + '）');
+chk(estimateTokens(mSmall) < estimateTokens(mLarge), '小预算产出少于大预算');
+chk(mSmall.includes('第499条'), '★ 预算紧张时保留最新记忆');
+
+// 合成
+const combo = buildInjectionText({ guide: bg, memory: mb });
+chk(combo.includes('<cmcc_guide>'), '合成文本含引导');
+chk(combo.includes('在避难所里冻了一夜'), '合成文本含记忆');
+chk(combo.indexOf('<cmcc_guide>') < combo.indexOf('在避难所里冻了一夜'), '引导在前、记忆在后');
+chk(buildInjectionText({ guide: '', memory: '' }) === '', '全空 → 空字符串');
+chk(buildInjectionText({ guide: bg, memory: '' }) === bg, '只有引导时原样返回');
+console.log('');
+
+// ── 13. 设置规范化（老配置升级）──
+console.log('【13】设置规范化');
+const oldCfg = { enabled: true, companionAvatar: 'x.png' };
+const norm = normalizeSettings(oldCfg);
+chk(norm.personaMode === 'builtin', '★ 老配置默认升级为 builtin 模式');
+chk(!!norm.builtin && norm.builtin.name === '同伴', '补齐 builtin 字段');
+chk(norm.companionAvatar === 'x.png', '保留原有设置');
+chk(norm.injectMemory === true, '补齐 injectMemory');
+chk(norm.memoryBudget === 1800, '补齐 memoryBudget');
+
 console.log(fail === 0 ? `✓ 全部通过 (${pass} 项)` : `❌ 失败 ${fail} 项 / 共 ${pass + fail} 项`);
 process.exit(fail ? 1 : 0);

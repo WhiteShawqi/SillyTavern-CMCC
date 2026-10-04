@@ -87,54 +87,123 @@ export function renderPanel(o) {
     // ── 陪伴角色 ──
     const sec1 = el('div', 'cmcc-sec');
     sec1.appendChild(el('div', 'cmcc-sec-title', '陪伴角色'));
-    const row1 = el('div', 'cmcc-row');
-    const sel = document.createElement('select');
-    sel.className = 'text_pole cmcc-select';
-    const none = document.createElement('option');
-    none.value = '';
-    none.textContent = '—— 未选择 ——';
-    sel.appendChild(none);
-    (ctx.characters || []).forEach((c, i) => {
-        if (!c) return;
-        const opt = document.createElement('option');
-        opt.value = c.avatar || String(i);
-        opt.textContent = c.name || '(无名)';
-        sel.appendChild(opt);
-    });
-    sel.value = settings.companionAvatar || '';
-    sel.onchange = async () => {
-        await api.setCompanion(sel.value);
-        refresh();
-    };
-    row1.appendChild(sel);
-    sec1.appendChild(row1);
 
-    // 创建新角色（复用 ST 自己的创建流程）
-    const createRow = el('div', 'cmcc-btns');
-    const bCreate = el('button', 'menu_button', '+ 创建新角色');
-    bCreate.title = '打开酒馆的「创建角色」对话框；建好后回来这里选它';
-    bCreate.onclick = () => {
-        const btn = document.getElementById('rm_button_create');
-        if (btn) {
-            btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-            ctx.toastr?.info?.('建好角色后，回到这里在「陪伴角色」里选它');
-            // 角色列表会异步更新，轮询几次自动刷新下拉
-            pollForNewCharacter();
-        } else {
-            ctx.toastr?.warning?.('找不到酒馆的创建角色按钮，请在角色管理里手动创建');
+    // 来源选择：内置（默认） / 用已有角色卡
+    const modeRow = el('div', 'cmcc-mode-row');
+    const mkMode = (mode, label, title) => {
+        const l = el('label', 'cmcc-radio');
+        if (title) l.title = title;
+        const i = document.createElement('input');
+        i.type = 'radio';
+        i.name = 'cmcc-persona-mode';
+        i.value = mode;
+        i.checked = (settings.personaMode || 'builtin') === mode;
+        i.onchange = async () => {
+            if (!i.checked) return;
+            await api.setPersonaMode(mode);
+            refresh();
+        };
+        l.appendChild(i);
+        l.appendChild(el('span', null, label));
+        return l;
+    };
+    modeRow.appendChild(mkMode('builtin', '内置角色（独立）',
+        '人设存在扩展设置里，不注册进角色卡库，也不占用原生世界书'));
+    modeRow.appendChild(mkMode('card', '用已有角色卡',
+        '从角色库里选一张卡作为陪伴者'));
+    sec1.appendChild(modeRow);
+
+    const isBuiltin = (settings.personaMode || 'builtin') === 'builtin';
+    const builtinBox = el('div', 'cmcc-builtin');
+
+    if (isBuiltin) {
+        // ── 内置人设编辑（完全独立，不碰原生角色卡）──
+        const b = settings.builtin || {};
+        const fields = [
+            ['name', '名字', b.name || '', '一行即可'],
+            ['description', '角色描述', b.description || '', '她是谁、外貌、身份（多行）'],
+            ['personality', '性格', b.personality || '', '性格、说话方式、行为倾向（多行）'],
+            ['scenario', '与你的关系', b.scenario || '', '她和你是什么关系（多行）'],
+        ];
+        for (const [key, label, val, hint] of fields) {
+            const row = el('div', 'cmcc-field cmcc-field-edit');
+            const lab = el('label', 'cmcc-field-label', label);
+            lab.title = hint || '';
+            row.appendChild(lab);
+            let input;
+            if (key === 'name') {
+                input = document.createElement('input');
+                input.type = 'text';
+                input.className = 'text_pole';
+                input.value = val;
+                input.placeholder = '给她起个名字';
+            } else {
+                input = document.createElement('textarea');
+                input.className = 'text_pole';
+                input.rows = key === 'description' ? 3 : 2;
+                input.value = val;
+                input.placeholder = hint || '';
+            }
+            input.onchange = async () => {
+                await api.setBuiltin({ [key]: input.value });
+                refresh();
+            };
+            row.appendChild(input);
+            builtinBox.appendChild(row);
         }
-    };
-    createRow.appendChild(bCreate);
+        builtinBox.appendChild(el('div', 'cmcc-hint',
+            '她是<b>独立</b>的：不写进角色卡库，也不依赖原生世界书。'
+            + '记忆直接注入提示词，所以不用去挂载任何世界书。'));
+    } else {
+        // ── 用已有角色卡 ──
+        const row1 = el('div', 'cmcc-row');
+        const sel = document.createElement('select');
+        sel.className = 'text_pole cmcc-select';
+        const none = document.createElement('option');
+        none.value = '';
+        none.textContent = '—— 未选择 ——';
+        sel.appendChild(none);
+        (ctx.characters || []).forEach((c, i) => {
+            if (!c) return;
+            const opt = document.createElement('option');
+            opt.value = c.avatar || String(i);
+            opt.textContent = c.name || '(无名)';
+            sel.appendChild(opt);
+        });
+        sel.value = settings.companionAvatar || '';
+        sel.onchange = async () => {
+            await api.setCompanion(sel.value);
+            refresh();
+        };
+        row1.appendChild(sel);
 
-    const bOpen = el('button', 'menu_button', '打开顶部面板');
-    bOpen.title = '改人设 / 改记忆';
+        const bCreate = el('button', 'menu_button', '+ 创建新角色');
+        bCreate.title = '打开酒馆的「创建角色」对话框；建好后回来这里选它';
+        bCreate.onclick = () => {
+            const btn = document.getElementById('rm_button_create');
+            if (btn) {
+                btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                ctx.toastr?.info?.('建好角色后，回到这里在「陪伴角色」里选它');
+                pollForNewCharacter();
+            } else {
+                ctx.toastr?.warning?.('找不到酒馆的创建角色按钮，请在角色管理里手动创建');
+            }
+        };
+        row1.appendChild(bCreate);
+        builtinBox.appendChild(row1);
+        builtinBox.appendChild(el('div', 'cmcc-hint',
+            '改这张卡的人设会直接写回角色卡本身。'));
+    }
+    sec1.appendChild(builtinBox);
+
+    // 打开顶部面板（改人设 / 记忆）
+    const createRow = el('div', 'cmcc-btns');
+    const bOpen = el('button', 'menu_button cmcc-wide-btn', '打开顶部面板（改人设 / 记忆）');
     bOpen.onclick = () => onOpenTop();
     createRow.appendChild(bOpen);
     sec1.appendChild(createRow);
 
-    sec1.appendChild(el('div', 'cmcc-hint',
-        '换人之后，她的人设会同步进记忆世界书。原来的记忆保留（按世界分着存）。'));
-
+    // 记忆操作
     const actRow = el('div', 'cmcc-btns');
     const bSum = el('button', 'menu_button', '立即整理记忆');
     bSum.onclick = () => api.summarize(true);
@@ -172,6 +241,10 @@ export function renderPanel(o) {
     };
     opts.appendChild(mkCheck('存档切换提示', 'announceSaveSwitch',
         '换世界/换存档时，让她自然表现出"这是另一次经历"'));
+    opts.appendChild(mkCheck('注入记忆', 'injectMemory',
+        '把记忆直接注入提示词（关掉就只靠世界书，需要手动挂载）'));
+    opts.appendChild(mkCheck('同步世界书', 'syncWorldbook',
+        '额外写一份 CMCC-记忆库，便于用 ST 编辑器查看/编辑记忆'));
     opts.appendChild(mkCheck('调试输出', 'debug', '把注入内容打到浏览器控制台 F12'));
     sec2.appendChild(opts);
 
@@ -194,6 +267,8 @@ export function renderPanel(o) {
     row2.appendChild(mkNum('自动整理(条)', 'summarizeEvery', 0, 200, '每收到这么多消息整理一次；0=关闭自动'));
     row2.appendChild(mkNum('冷却(秒)', 'summarizeCooldown', 10, 3600));
     row2.appendChild(mkNum('引导预算', 'tokenBudget', 200, 4000));
+    row2.appendChild(mkNum('记忆预算', 'memoryBudget', 200, 20000,
+        '记忆注入的 token 上限；记忆很多时按此截断'));
     sec2.appendChild(row2);
     content.appendChild(sec2);
 

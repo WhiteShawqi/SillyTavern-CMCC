@@ -14,7 +14,7 @@ import { getContext, extension_settings } from '../../../../scripts/extensions.j
 import { eventSource, event_types } from '../../../../script.js';
 
 import {
-    MODULE, APP_NAME, APP_ABBR, DEFAULT_SETTINGS,
+    MODULE, APP_NAME, APP_ABBR, DEFAULT_SETTINGS, normalizeSettings,
     worldKey, worldLabel, saveKey,
     emptyWorld, ensureSave, addMemory, renameSave, deleteSave,
     editMemory, deleteMemory, renameWorld,
@@ -28,7 +28,7 @@ import {
     serializeWorld, parseWorld, serializeShared, parseShared,
 } from './src/store.js';
 
-import { buildGuide, injectIntoRequest, estimateTokens } from './src/inject.js';
+import { buildGuide, buildMemoryBlock, buildInjectionText, injectIntoRequest, estimateTokens } from './src/inject.js';
 import { renderPanel } from './src/ui.js';
 import { mountTopDrawer, renderTopPanel, openTopPanel, setRenderHook } from './src/topbar.js';
 
@@ -90,7 +90,41 @@ function findCompanion(avatar) {
     return (ctx().characters || []).find((c) => c && c.avatar === avatar) || null;
 }
 
+/**
+ * 取当前「陪伴者人设」（不依赖角色卡库）
+ *   personaMode === 'builtin' → 用设置里内置的人设（完全独立）
+ *   personaMode === 'card'    → 用角色库里的卡
+ */
+function resolveCompanion() {
+    if (settings.personaMode === 'builtin') {
+        const b = settings.builtin || {};
+        if (!b.name && !b.description) return null;
+        return {
+            name: b.name || '同伴',
+            isBuiltin: true,
+            data: {
+                name: b.name || '同伴',
+                description: b.description || '',
+                personality: b.personality || '',
+                scenario: b.scenario || '',
+            },
+        };
+    }
+    return findCompanion(settings.companionAvatar);
+}
+
+/** 是否已选好陪伴者（两种模式各自的判据） */
+function hasCompanion() {
+    if (settings.personaMode === 'builtin') {
+        const b = settings.builtin || {};
+        return !!(b.name || b.description || b.personality);
+    }
+    return !!settings.companionAvatar;
+}
+
 function isTalkingToCompanion(p) {
+    // 只有「用角色卡」模式才可能正在和她本人聊天
+    if (settings.personaMode === 'builtin') return false;
     return !!(settings.companionAvatar && p.avatar === settings.companionAvatar);
 }
 
@@ -152,6 +186,8 @@ async function loadFromBook() {
 
 /** 把 CACHE 写回世界书 */
 async function saveToBook(bookIn) {
+    // 关掉「同步世界书」时：只维护内存模型，不落盘（记忆仍会直接注入提示词）
+    if (settings.syncWorldbook === false) return null;
     const book = bookIn || await readBook();
 
     for (const [k, w] of Object.entries(CACHE.worlds)) {
@@ -217,11 +253,11 @@ async function syncPosition(p, { persist = true } = {}) {
 
 function onSettingsReady(generateData) {
     try {
-        if (!settings.enabled || !settings.companionAvatar) return;
+        if (!settings.enabled || !hasCompanion()) return;
         const p = currentPos();
         if (isTalkingToCompanion(p)) return;
 
-        const companion = findCompanion(settings.companionAvatar);
+        const companion = resolveCompanion();
         if (!companion) return;
 
         // 用缓存里的信息（同步操作，不在事件里 await）
@@ -232,7 +268,7 @@ function onSettingsReady(generateData) {
             .sort((a, b) => (b[1].lastSeen || 0) - (a[1].lastSeen || 0))
             .map(([, s]) => s.label) : [];
 
-        const text = buildGuide({
+        const guide = buildGuide({
             companion,
             wLabel: p.wLabel,
             saveLabel: save?.label || '本次',
@@ -241,15 +277,34 @@ function onSettingsReady(generateData) {
             settings,
             saveSwitched: autoState.justSwitched,
         });
+        if (!guide) return;
+
+        // 记忆直接注入（不依赖世界书挂载）
+        const memory = settings.injectMemory
+            ? buildMemoryBlock({
+                mem: CACHE,
+                wKey: p.wKey, sKey: p.sKey, wLabel: p.wLabel,
+                budget: settings.memoryBudget || 1800,
+                saveLimit: settings.saveMemoryLimit || 500,
+            })
+            : '';
+
+        const text = buildInjectionText({ guide, memory });
         if (!text) return;
 
         if (injectIntoRequest(generateData, text)) {
             autoState.justSwitched = false;
             if (settings.debug) {
-                log('已注入引导 %d 字符 / 约 %d token（世界=%s 存档=%s）',
-                    text.length, estimateTokens(text), p.wLabel, save?.label || '?');
+                log('已注入 %d 字符 / 约 %d token（引导 %d + 记忆 %d）世界=%s 存档=%s',
+                    text.length, estimateTokens(text),
+                    estimateTokens(guide), estimateTokens(memory),
+                    p.wLabel, save?.label || '?');
                 console.debug(text);
-                log('记忆世界书：%s（%d 个世界）', WORLD_BOOK, Object.keys(CACHE.worlds).length);
+                log('记忆：%d 个世界 / %d 条',
+                    Object.keys(CACHE.worlds).length,
+                    Object.values(CACHE.worlds)
+                        .reduce((a, x) => a + Object.values(x.saves || {})
+                            .reduce((b, s) => b + (s.entries || []).length, 0), 0));
             }
         }
     } catch (e) {
@@ -316,8 +371,11 @@ async function summarize(manual = false) {
     if (autoState.running) return;
     const p = currentPos();
 
-    if (!settings.companionAvatar) {
-        if (manual) ctx().toastr?.warning?.('请先选择陪伴角色卡');
+    if (!hasCompanion()) {
+        if (manual) ctx().toastr?.warning?.(
+            settings.personaMode === 'builtin'
+                ? '请先填写内置陪伴角色的人设（名字/描述）'
+                : '请先选择陪伴角色卡');
         return;
     }
     if (!(ctx().chat || []).length) {
@@ -329,7 +387,7 @@ async function summarize(manual = false) {
     if (!manual && now - autoState.lastRun < (settings.summarizeCooldown || 90) * 1000) return;
 
     let companionName = '同伴';
-    const comp = findCompanion(settings.companionAvatar);
+    const comp = resolveCompanion();
     if (comp) companionName = comp.name || companionName;
 
     autoState.running = true;
@@ -372,7 +430,7 @@ async function summarize(manual = false) {
 }
 
 function onMessageReceived() {
-    if (!settings.enabled || !settings.companionAvatar) return;
+    if (!settings.enabled || !hasCompanion()) return;
     const p = currentPos();
     if (isTalkingToCompanion(p)) return;
     const k = posKey(p);
@@ -384,40 +442,80 @@ function onMessageReceived() {
 // 对外操作（给 UI 用）
 // ─────────────────────────────────────────────
 
+/**
+ * 把陪伴者人设同步进世界书的「[CMCC] 她是谁」词条
+ * 目的：即使不用内置注入，用户也能在 ST 世界书编辑器里看到她的人设；
+ *      内置模式下这是**唯一**的人设落盘处（不进角色卡库）。
+ */
+async function syncIdentityEntry(book, comp) {
+    if (!comp) return;
+    if (settings.syncWorldbook === false) return;
+    const d = comp.data || comp;
+    const mode = settings.personaMode === 'builtin' ? '内置人设' : '角色卡';
+    const txt = [
+        `# ${d.name || comp.name || '同伴'}`,
+        '',
+        '> 跨世界陪伴者（来源：' + mode + '）。',
+        '> 她跟着 {user} 走过多个世界，记得一起经历的事。',
+        '',
+        '## 人设',
+        (d.description || '（未填写）').trim(),
+        '',
+        '## 性格',
+        (d.personality || '（未填写）').trim(),
+        '',
+        '## 与 {user} 的关系',
+        (d.scenario || '（未填写）').trim(),
+    ].join('\n');
+    upsertEntry(book, C_IDENTITY, txt);
+    await writeBook(book);
+}
+
 const api = {
     /** 当前记忆快照（给面板渲染） */
     snapshot() {
+        const mode = settings.personaMode || 'builtin';
+        const comp = resolveCompanion();
         return {
             bookName: WORLD_BOOK,
+            personaMode: mode,
             companionAvatar: CACHE.companionAvatar,
+            companionName: comp?.name || (mode === 'builtin' ? '（未填写人设）' : '（未选择）'),
+            injectMemory: settings.injectMemory !== false,
+            syncWorldbook: settings.syncWorldbook !== false,
+            hasCompanion: hasCompanion(),
+            builtin: settings.builtin || {},
             stats: bookStats(CACHE.worlds),
             shared: CACHE.shared,
             worlds: CACHE.worlds,
         };
     },
+    /** 切到「用角色卡」模式并指定卡 */
     async setCompanion(avatar) {
+        settings.personaMode = 'card';
         CACHE.companionAvatar = avatar;
         settings.companionAvatar = avatar;
         onSave();
         const book = await loadFromBook();
         const comp = findCompanion(avatar);
         if (comp) {
-            const d = comp.data || comp;
-            const txt = [
-                `# ${d.name || comp.name || '同伴'}`,
-                '',
-                '> 这个角色是 {user} 的**跨世界陪伴者**。',
-                '> 她跟着 {user} 走过多个世界，记得一起经历的事。',
-                '',
-                '## 人设',
-                (d.description || '（角色卡未填 description）').trim(),
-                '',
-                '## 性格',
-                (d.personality || '（角色卡未填 personality）').trim(),
-            ].join('\n');
-            upsertEntry(book, C_IDENTITY, txt);
-            await writeBook(book);
+            await syncIdentityEntry(book, comp);
         }
+    },
+    /** 改内置人设（部分字段） */
+    async setBuiltin(patch) {
+        settings.personaMode = 'builtin';
+        settings.builtin = Object.assign({}, settings.builtin || {}, patch || {});
+        onSave();
+        const book = await loadFromBook();
+        await syncIdentityEntry(book, resolveCompanion());
+    },
+    /** 切模式 */
+    async setPersonaMode(mode) {
+        settings.personaMode = mode === 'card' ? 'card' : 'builtin';
+        onSave();
+        const book = await loadFromBook();
+        await syncIdentityEntry(book, resolveCompanion());
         panel?.refresh();
     },
     async renameSave(wKey, sKey, name) {
@@ -490,22 +588,24 @@ const api = {
         panel?.refresh();
     },
     /**
-     * 改陪伴角色卡的人设字段（description / personality / scenario / first_mes）
-     * 直接写回角色卡并保存；同时刷新世界书里的「[CMCC] 她是谁」
+     * 改陪伴者人设字段
+     *   内置模式 → 存进扩展设置（不碰角色卡库）
+     *   角色卡模式 → 写回角色卡并保存
+     * 两种情况都会同步世界书的「[CMCC] 她是谁」词条
      */
     async editPersona(key, value) {
+        if ((settings.personaMode || 'builtin') === 'builtin') {
+            await api.setBuiltin({ [key]: value });
+            ctx().toastr?.success?.(`已更新内置人设「${key}」`);
+            return true;
+        }
         const av = settings.companionAvatar;
         const comp = findCompanion(av);
         if (!comp) { ctx().toastr?.warning?.('找不到陪伴角色卡'); return false; }
         const d = comp.data || comp;
         d[key] = value;
-        try {
-            await ctx().saveCharacterDebounced?.();
-        } catch (e) { /* ignore */ }
-        // 部分 ST 版本用这个
-        try { ctx().saveSettingsDebounced?.(); } catch (e) { /* ignore */ }
-        // 同步世界书里的人设词条
-        await api.setCompanion(av);
+        try { await ctx().saveCharacterDebounced?.(); } catch (e) { /* ignore */ }
+        await api.setCompanion(av);   // 同步人设词条
         ctx().toastr?.success?.(`已更新「${key}」（若未落盘，请在角色管理里点保存）`);
         return true;
     },
@@ -581,10 +681,12 @@ function highlight(node) {
 
 jQuery(async () => {
     extension_settings[MODULE] = extension_settings[MODULE] || {};
-    settings = Object.assign({}, DEFAULT_SETTINGS, extension_settings[MODULE]);
+    settings = normalizeSettings(extension_settings[MODULE]);
+    // 回写规范化后的设置，保证新增字段落盘
+    extension_settings[MODULE] = settings;
     CACHE.companionAvatar = settings.companionAvatar || '';
 
-    if (settings.enabled && settings.companionAvatar) {
+    if (settings.enabled && hasCompanion()) {
         try { await loadFromBook(); } catch (e) { warn('载入世界书失败', e); }
     }
 
@@ -643,6 +745,7 @@ jQuery(async () => {
 
     try { await syncPosition(currentPos()); } catch (e) { /* ignore */ }
 
-    log('已加载。陪伴者=%s 启用=%s 记忆世界书=%s',
-        settings.companionAvatar || '(未选)', settings.enabled, WORLD_BOOK);
+    log('已加载。模式=%s 陪伴者=%s 启用=%s 记忆注入=%s',
+        settings.personaMode, resolveCompanion()?.name || '(未设定)',
+        settings.enabled, settings.injectMemory);
 });

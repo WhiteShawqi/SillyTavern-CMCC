@@ -13,13 +13,33 @@ export const APP_TAG = 'STCMCC';
 /** 默认设置 */
 export const DEFAULT_SETTINGS = {
     enabled: false,
-    /** 陪伴的角色卡文件名（avatar），空串=未选择 */
+
+    /**
+     * 陪伴角色来源
+     *   'builtin' —— 内置（默认）：人设存在扩展设置里，不注册进角色卡库，
+     *                完全独立于原生角色卡与原生世界书
+     *   'card'    —— 用角色库里已有的卡
+     */
+    personaMode: 'builtin',
+
+    /** 内置人设（personaMode==='builtin' 时使用） */
+    builtin: {
+        name: '同伴',
+        description: '',
+        personality: '',
+        scenario: '',
+    },
+
+    /** personaMode==='card' 时，指向角色卡文件名（avatar） */
     companionAvatar: '',
-    /** 动态注入「你在哪 / 怎么用这些记忆」的引导（记忆本身由世界书注入） */
-    dynamicGuide: true,
+
+    /** 记忆直接注入提示词（不依赖世界书挂载） */
+    injectMemory: true,
+    /** 记忆注入的 token 预算 */
+    memoryBudget: 1800,
     /** 引导文本的 token 预算 */
     tokenBudget: 600,
-    /** 每个存档最多写入多少条记忆 */
+    /** 每个存档最多注入多少条记忆 */
     saveMemoryLimit: 500,
     /** 自动整理：每多少条消息一次 */
     summarizeEvery: 12,
@@ -27,9 +47,18 @@ export const DEFAULT_SETTINGS = {
     summarizeCooldown: 90,
     /** 换存档/换世界时，让她自然表现出"这是另一次经历" */
     announceSaveSwitch: true,
+    /** 是否同步写一份世界书（便于用 ST 编辑器查看/编辑） */
+    syncWorldbook: true,
     /** 调试输出 */
     debug: false,
 };
+
+/** 兼容旧设置：补齐新增字段 */
+export function normalizeSettings(s) {
+    const out = Object.assign({}, DEFAULT_SETTINGS, s || {});
+    out.builtin = Object.assign({}, DEFAULT_SETTINGS.builtin, s?.builtin || {});
+    return out;
+}
 
 // ─────────────────────────────────────────────
 // 标识
