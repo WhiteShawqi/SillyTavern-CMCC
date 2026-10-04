@@ -1,29 +1,45 @@
 /* 跨世界陪伴角色 (CMCC) · 面板样式 */
 
 .cmcc-panel {
-    margin: 8px 0;
-    padding: 10px 12px;
-    border: 1px solid var(--SmartThemeBorderColor, #444);
-    border-radius: 8px;
-    background: var(--SmartThemeBlurTintColor, rgba(0 0 0 / 0.2));
-    font-size: 0.92em;
-    /* 扩展设置区是 flex column，宽度由父级给；
-       这里保证内部内容有足够的排版宽度，不被压到"一个字一行" */
+    /* 现在内部是 ST 标准 .inline-drawer，边框/内边距交给它，
+       这里只负责占满宽度、不被压窄 */
+    margin: 4px 0;
     min-width: 0;
     width: 100%;
     box-sizing: border-box;
+    font-size: 0.95em;
 }
 
-.cmcc-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+/* 收起后的内容区 */
+.cmcc-panel .inline-drawer-content {
+    padding-top: 6px;
+}
+
+/* 标题行：标题 + 副标题 + 启用开关 一行排开 */
+.cmcc-panel .inline-drawer-header {
     gap: 8px;
-    margin-bottom: 8px;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
 }
 
-.cmcc-head b { font-size: 1.02em; }
+.cmcc-panel .inline-drawer-header b {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+.cmcc-switch-inline {
+    flex: 0 0 auto;
+    margin-left: auto;
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.92em;
+    opacity: 0.9;
+}
+
+.cmcc-switch-inline:hover { opacity: 1; }
 
 .cmcc-sub {
     opacity: 0.6;
@@ -46,8 +62,6 @@
     margin: 6px 0;
     flex-wrap: wrap;
 }
-
-.cmcc-bar { gap: 6px; }
 
 .cmcc-label {
     opacity: 0.75;
@@ -108,24 +122,12 @@
     font-size: 0.92em;
 }
 
-/* 记忆列表 */
-.cmcc-list {
-    max-height: 420px;
-    overflow-y: auto;
-    margin: 6px 0;
-    padding-right: 4px;
-}
-
 .cmcc-world {
     margin: 8px 0;
     padding: 7px 9px;
     border-left: 2px solid var(--SmartThemeQuoteColor, #7aa2f7);
     background: rgba(127 127 127 / 0.07);
     border-radius: 0 6px 6px 0;
-}
-
-.cmcc-world.cmcc-shared {
-    border-left-color: #d9a441;
 }
 
 .cmcc-world-head {
@@ -441,16 +443,6 @@
     padding: 3px 0 3px 6px;
     border-left: 2px solid rgba(122 162 247 / 0.5);
     line-height: 1.5;
-}
-
-/* 从设置页跳过来时闪一下 */
-@keyframes cmcc-flash-kf {
-    0%   { box-shadow: 0 0 0 0 rgba(122 162 247 / 0.85); }
-    100% { box-shadow: 0 0 0 12px rgba(122 162 247 / 0); }
-}
-
-.cmcc-flash {
-    animation: cmcc-flash-kf 1.1s ease-out 2;
 }
 
 /* 记忆世界书未挂载的提醒块 */

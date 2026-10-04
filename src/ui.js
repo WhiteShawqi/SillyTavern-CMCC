@@ -2,8 +2,10 @@
  * CMCC · 扩展设置页（和酒馆助手同位置）
  *
  * 职责划分：
- *   这里     —— 切换「哪个角色做陪伴者」+ 开关与参数 + 记忆总览（只读）
+ *   这里     —— 切换「哪个角色做陪伴者」+ 创建新角色 + 开关参数 + 记忆总览
  *   顶部入口 —— 改人设 + 改记忆（日常编辑都走那里）
+ *
+ * 结构：用 ST 官方的 `.inline-drawer` 模式，可收起（与其它扩展一致）
  */
 
 const ID = 'cmcc_settings';
@@ -27,14 +29,44 @@ export function renderPanel(o) {
     const { settings, onSave, ctx, api, onOpenTop } = o;
     document.getElementById(ID)?.remove();
 
+    // ── 外层：ST 标准 inline-drawer（可收起）──
     const root = el('div', 'cmcc-panel');
     root.id = ID;
 
-    // ── 标题 ──
-    const head = el('div', 'cmcc-head');
-    head.innerHTML = '<b>跨世界陪伴角色</b>'
+    const drawer = el('div', 'inline-drawer');
+
+    const toggle = el('div', 'inline-drawer-toggle inline-drawer-header');
+    toggle.innerHTML = '<b>跨世界陪伴角色</b>'
         + '<span class="cmcc-sub">CMCC · 一个固定的角色，记得你们经历的一切</span>';
-    const toggle = el('label', 'cmcc-switch');
+    const chev = el('div', 'inline-drawer-icon fa-solid fa-circle-chevron-down down');
+    toggle.appendChild(chev);
+    drawer.appendChild(toggle);
+
+    const content = el('div', 'inline-drawer-content');
+    drawer.appendChild(content);
+    root.appendChild(drawer);
+
+    // 收起逻辑：照抄 ST 的 toggleDrawer（utils.js:2533）
+    // 关键：它操作的是 content 的**内联 display**，不是 class。
+    // 我上一版用了 displayNone class，而 .inline-drawer-content 默认就是 display:none，
+    // 所以切换 class 没有任何效果 → 表现为"收不起来"。
+    let expanded = true;
+    const applyExpand = (open) => {
+        expanded = open;
+        if (open) {
+            chev.classList.remove('down', 'fa-circle-chevron-down');
+            chev.classList.add('up', 'fa-circle-chevron-up');
+            content.style.display = 'block';
+        } else {
+            chev.classList.remove('up', 'fa-circle-chevron-up');
+            chev.classList.add('down', 'fa-circle-chevron-down');
+            content.style.display = 'none';
+        }
+    };
+    toggle.addEventListener('click', () => applyExpand(!expanded));
+
+    // ── 启用开关（放在标题行，收起时也能操作）──
+    const sw = el('label', 'cmcc-switch cmcc-switch-inline');
     const cb = document.createElement('input');
     cb.type = 'checkbox';
     cb.checked = !!settings.enabled;
@@ -43,12 +75,16 @@ export function renderPanel(o) {
         onSave();
         if (cb.checked) api.reload().then(refresh);
     };
-    toggle.appendChild(cb);
-    toggle.appendChild(el('span', null, '启用'));
-    head.appendChild(toggle);
-    root.appendChild(head);
+    sw.appendChild(cb);
+    sw.appendChild(el('span', null, '启用'));
+    sw.onclick = (e) => e.stopPropagation();   // 别触发抽屉收起
+    toggle.appendChild(sw);
 
-    // ── 切换陪伴者（本页核心）──
+    // ══════════════════════════════════
+    // 内容区
+    // ══════════════════════════════════
+
+    // ── 陪伴角色 ──
     const sec1 = el('div', 'cmcc-sec');
     sec1.appendChild(el('div', 'cmcc-sec-title', '陪伴角色'));
     const row1 = el('div', 'cmcc-row');
@@ -72,18 +108,39 @@ export function renderPanel(o) {
     };
     row1.appendChild(sel);
     sec1.appendChild(row1);
+
+    // 创建新角色（复用 ST 自己的创建流程）
+    const createRow = el('div', 'cmcc-btns');
+    const bCreate = el('button', 'menu_button', '+ 创建新角色');
+    bCreate.title = '打开酒馆的「创建角色」对话框；建好后回来这里选它';
+    bCreate.onclick = () => {
+        const btn = document.getElementById('rm_button_create');
+        if (btn) {
+            btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            ctx.toastr?.info?.('建好角色后，回到这里在「陪伴角色」里选它');
+            // 角色列表会异步更新，轮询几次自动刷新下拉
+            pollForNewCharacter();
+        } else {
+            ctx.toastr?.warning?.('找不到酒馆的创建角色按钮，请在角色管理里手动创建');
+        }
+    };
+    createRow.appendChild(bCreate);
+
+    const bOpen = el('button', 'menu_button', '打开顶部面板');
+    bOpen.title = '改人设 / 改记忆';
+    bOpen.onclick = () => onOpenTop();
+    createRow.appendChild(bOpen);
+    sec1.appendChild(createRow);
+
     sec1.appendChild(el('div', 'cmcc-hint',
         '换人之后，她的人设会同步进记忆世界书。原来的记忆保留（按世界分着存）。'));
 
-    const quick = el('div', 'cmcc-btns');
-    const bOpen = el('button', 'menu_button cmcc-wide-btn', '打开顶部面板（改人设 / 记忆）');
-    bOpen.onclick = () => onOpenTop();
-    quick.appendChild(bOpen);
+    const actRow = el('div', 'cmcc-btns');
     const bSum = el('button', 'menu_button', '立即整理记忆');
     bSum.onclick = () => api.summarize(true);
-    quick.appendChild(bSum);
+    actRow.appendChild(bSum);
     const bNew = el('button', 'menu_button', '手动加一条记忆');
-    bNew.title = '给当前世界/存档加一条记忆（不改人设）';
+    bNew.title = '给当前世界/存档加一条记忆';
     bNew.onclick = async () => {
         let pos;
         try { pos = api.currentPos(); } catch (e) { pos = null; }
@@ -94,11 +151,11 @@ export function renderPanel(o) {
         ctx.toastr?.success?.('已加入「' + (pos.wLabel || '当前世界') + '」');
         refresh();
     };
-    quick.appendChild(bNew);
-    sec1.appendChild(quick);
-    root.appendChild(sec1);
+    actRow.appendChild(bNew);
+    sec1.appendChild(actRow);
+    content.appendChild(sec1);
 
-    // ── 选项 ──
+    // ── 行为 ──
     const sec2 = el('div', 'cmcc-sec');
     sec2.appendChild(el('div', 'cmcc-sec-title', '行为'));
     const opts = el('div', 'cmcc-opts');
@@ -138,14 +195,45 @@ export function renderPanel(o) {
     row2.appendChild(mkNum('冷却(秒)', 'summarizeCooldown', 10, 3600));
     row2.appendChild(mkNum('引导预算', 'tokenBudget', 200, 4000));
     sec2.appendChild(row2);
-    root.appendChild(sec2);
+    content.appendChild(sec2);
 
-    // ── 记忆总览（只读）──
+    // ── 记忆总览 ──
     const sec3 = el('div', 'cmcc-sec');
     sec3.appendChild(el('div', 'cmcc-sec-title', '记忆总览'));
     const stats = el('div', 'cmcc-stats');
     sec3.appendChild(stats);
-    root.appendChild(sec3);
+    content.appendChild(sec3);
+
+    /** 角色创建后自动刷新下拉（ST 建角色是异步的） */
+    function pollForNewCharacter(round = 0) {
+        if (round > 20) return;   // 最多等 ~10s
+        setTimeout(() => {
+            const now = (ctx.characters || []).length;
+            if (now !== sel.options.length - 1) {
+                rebuildSelect();
+                ctx.toastr?.success?.('角色列表已更新，请在「陪伴角色」里选它');
+            } else {
+                pollForNewCharacter(round + 1);
+            }
+        }, 500);
+    }
+
+    function rebuildSelect() {
+        const keep = sel.value;
+        sel.innerHTML = '';
+        const n2 = document.createElement('option');
+        n2.value = '';
+        n2.textContent = '—— 未选择 ——';
+        sel.appendChild(n2);
+        (ctx.characters || []).forEach((c, i) => {
+            if (!c) return;
+            const opt = document.createElement('option');
+            opt.value = c.avatar || String(i);
+            opt.textContent = c.name || '(无名)';
+            sel.appendChild(opt);
+        });
+        sel.value = keep;
+    }
 
     function refresh() {
         let snap;
@@ -170,8 +258,8 @@ export function renderPanel(o) {
         }
         if (s.worlds.length > 8) rows.push(`… 还有 ${s.worlds.length - 8} 个世界`);
         if (!s.worldCount) rows.push('<span class="cmcc-hint">还没有记忆。选好角色卡后去玩任意一张卡。</span>');
-        rows.push('<span class="cmcc-hint">改记忆 / 改人设请点上面「打开顶部面板」，'
-            + '或用酒馆顶部那个图标。</span>');
+        rows.push('<span class="cmcc-hint">改人设 / 改记忆：点「打开顶部面板」，'
+            + '或用酒馆顶部那个人形图标。</span>');
         stats.innerHTML = rows.map((x) => `<div class="cmcc-stat-line">${x}</div>`).join('');
     }
     refresh();
@@ -179,5 +267,10 @@ export function renderPanel(o) {
     const host = document.getElementById('extensions_settings2')
         || document.getElementById('extensions_settings');
     host?.appendChild(root);
-    return { refresh };
+    applyExpand(true);   // 默认展开
+    return {
+        refresh,
+        expand: () => applyExpand(true),
+        collapse: () => applyExpand(false),
+    };
 }

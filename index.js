@@ -540,7 +540,7 @@ function onSave() {
     ctx().saveSettingsDebounced?.();
 }
 
-/** 跳到扩展设置页（和酒馆助手同位置）并高亮本插件 */
+/** 跳到扩展设置页（和酒馆助手同位置）并展开 + 高亮本插件 */
 function gotoPluginSettings() {
     try {
         const btn = document.getElementById('extensions-settings-button')
@@ -549,13 +549,34 @@ function gotoPluginSettings() {
         if (panelEl && !panelEl.classList.contains('openDrawer')) {
             btn?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
         }
+        // 本插件的抽屉若处于收起状态，先展开
+        try { panel?.expand?.(); } catch (e) { /* ignore */ }
         setTimeout(() => {
             const root = document.getElementById('cmcc_settings');
+            // 再兜一次：确保内容可见
+            const content = root?.querySelector('.inline-drawer-content');
+            if (content && getComputedStyle(content).display === 'none') {
+                content.style.display = 'block';
+                const ico = root.querySelector('.inline-drawer-icon');
+                ico?.classList.remove('down', 'fa-circle-chevron-down');
+                ico?.classList.add('up', 'fa-circle-chevron-up');
+            }
             root?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            root?.classList.add('cmcc-flash');
-            setTimeout(() => root?.classList.remove('cmcc-flash'), 1200);
-        }, 260);
+            highlight(root);
+        }, 280);
     } catch (e) { /* ignore */ }
+}
+
+/** 短暂高亮（用 outline 动画，不依赖已删除的 CSS 类） */
+function highlight(node) {
+    if (!node) return;
+    const old = node.style.outline;
+    node.style.transition = 'outline-color .3s ease';
+    node.style.outline = '2px solid var(--SmartThemeQuoteColor, #7aa2f7)';
+    setTimeout(() => {
+        node.style.outline = old || '2px solid transparent';
+        setTimeout(() => { node.style.outline = old; }, 320);
+    }, 1100);
 }
 
 jQuery(async () => {
