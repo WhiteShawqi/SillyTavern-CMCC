@@ -1035,3 +1035,52 @@ details.cmcc[open] > *:not(summary):last-child {
 .cmcc-pbar .cmcc-danger {
     border-color: rgba(220 100 100 / 0.55);
 }
+
+/* ══ 赞助（爱发电）══
+   放最底部，不打扰日常使用。是个真链接（新标签页打开），
+   不是 JS 弹窗 —— 免得被浏览器当弹窗拦掉。 */
+.cmcc-support {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed rgba(127 127 127 / 0.3);
+}
+
+.cmcc-support-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.cmcc-support-text {
+    flex: 1 1 160px;
+    min-width: 0;
+    font-size: 0.9em;
+    line-height: 1.5;
+}
+
+.cmcc-support-btn {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    text-decoration: none !important;
+    white-space: nowrap;
+    background: linear-gradient(135deg, rgba(255 122 158 / 0.22), rgba(255 168 120 / 0.18));
+    border: 1px solid rgba(255 122 158 / 0.55);
+    color: #ffd6e2 !important;
+    transition: filter 0.15s ease, transform 0.1s ease;
+}
+
+.cmcc-support-btn:hover {
+    filter: brightness(1.25);
+    transform: translateY(-1px);
+}
+
+.cmcc-support-btn:active { transform: translateY(0); }
+
+.cmcc-support-ico {
+    color: #ff7a9e;
+    font-size: 1.05em;
+    line-height: 1;
+}

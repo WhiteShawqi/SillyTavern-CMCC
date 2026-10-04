@@ -155,6 +155,22 @@ try {
         result.hasPersonaBar = !!panel.querySelector('.cmcc-pbar');
         result.personaOptions = panel.querySelectorAll('option').length;
         result.hasOverview = !!panel.querySelector('.cmcc-ov-head');
+
+        // ★ 赞助按钮：必须是真链接、指向爱发电、且真的看得见
+        // ⚠ 注意：上面刚点过三次，面板停在「收起」状态。
+        //   收起时 display:none，量到的尺寸是 0 —— 所以要先展开再量。
+        if (steps[3].display === 'none') header.click();
+        await sleep(120);
+
+        const spon = panel.querySelector('.cmcc-support-btn');
+        result.hasSponsor = !!spon;
+        if (spon) {
+            result.sponsorHref = spon.getAttribute('href');
+            result.sponsorBlank = spon.getAttribute('target') === '_blank';
+            result.sponsorIsLink = spon.tagName === 'A';
+            const spr = spon.getBoundingClientRect();
+            result.sponsorVisible = spr.width > 40 && spr.height > 10;
+        }
         result.bars = panel.querySelectorAll('.cmcc-pbar').length;
 
         // ★ 全局扫一遍：有没有元素因为父级被裁而"看不见"
@@ -170,7 +186,13 @@ try {
             && result.initExpanded && result.collapseHidden
             && result.expandRestored && result.reCollapseHidden
             && result.chevToggles && result.hasPersonaBar
-            && result.personaOptions === 2 && result.bars === 2;
+            && result.personaOptions === 2 && result.bars === 2
+            // 赞助按钮
+            && result.hasSponsor === true
+            && result.sponsorIsLink === true
+            && result.sponsorVisible === true
+            && result.sponsorBlank === true
+            && result.sponsorHref === 'https://afdian.com/a/WhiteShawqi';
     }
 } catch (e) {
     errors.push('检查过程抛错: ' + (e && e.message));

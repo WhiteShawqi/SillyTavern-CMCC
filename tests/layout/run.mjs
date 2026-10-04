@@ -48,6 +48,8 @@ await new Promise((r) => setTimeout(r, 1500));
 const PAGES = [
     { file: 'index.html', key: 'CMCC_TOPBAR', label: '顶部面板' },
     { file: 'settings.html', key: 'CMCC_SETTINGS', label: '设置页抽屉' },
+    { file: 'checkbox.html', key: 'CMCC_CHECKBOX', label: '勾选框样式' },
+    { file: 'multiselect.html', key: 'CMCC_MULTISEL', label: '多选级联勾选' },
 ];
 
 let allOk = true;

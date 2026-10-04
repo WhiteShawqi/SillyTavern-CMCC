@@ -70,6 +70,7 @@ export const __selTestHook = {
     SELECTED, SELECTED_SAVES, SELECTED_WORLDS,
     clear() { SELECTED.clear(); SELECTED_SAVES.clear(); SELECTED_WORLDS.clear(); },
     setMode(v) { SELECT_MODE = !!v; },
+    getMode() { return SELECT_MODE; },
 };
 
 export function entryKey(wKey, sKey, idx) {
@@ -103,8 +104,8 @@ export function saveKeyId(wKey, sKey) {
 // ─────────────────────────────────────────────
 
 /** 把某个存档下所有记忆加进 / 移出 SELECTED */
-export function setSaveEntries(wKey, sKey, on, mem) {
-    const w = mem?.worlds?.[wKey];
+export function setSaveEntries(wKey, sKey, on, worlds) {
+    const w = worlds?.[wKey];
     const n = w?.saves?.[sKey]?.entries?.length || 0;
     for (let i = 0; i < n; i++) {
         const k = entryKey(wKey, sKey, i);
@@ -113,19 +114,19 @@ export function setSaveEntries(wKey, sKey, on, mem) {
 }
 
 /** 把某个世界下所有存档、记忆加进 / 移出 */
-export function setWorldAll(wKey, on, mem) {
-    const w = mem?.worlds?.[wKey];
+export function setWorldAll(wKey, on, worlds) {
+    const w = worlds?.[wKey];
     if (!w?.saves) return;
     for (const sKey of Object.keys(w.saves)) {
         const id = saveKeyId(wKey, sKey);
         if (on) SELECTED_SAVES.add(id); else SELECTED_SAVES.delete(id);
-        setSaveEntries(wKey, sKey, on, mem);
+        setSaveEntries(wKey, sKey, on, worlds);
     }
 }
 
 /** 某个存档的勾选状态：'all' | 'some' | 'none' */
-export function saveSelState(wKey, sKey, mem) {
-    const n = mem?.worlds?.[wKey]?.saves?.[sKey]?.entries?.length || 0;
+export function saveSelState(wKey, sKey, worlds) {
+    const n = worlds?.[wKey]?.saves?.[sKey]?.entries?.length || 0;
     if (!n) return SELECTED_SAVES.has(saveKeyId(wKey, sKey)) ? 'all' : 'none';
     let hit = 0;
     for (let i = 0; i < n; i++) if (SELECTED.has(entryKey(wKey, sKey, i))) hit++;
@@ -134,14 +135,14 @@ export function saveSelState(wKey, sKey, mem) {
 }
 
 /** 某个世界的勾选状态：'all' | 'some' | 'none' */
-export function worldSelState(wKey, mem) {
-    const w = mem?.worlds?.[wKey];
+export function worldSelState(wKey, worlds) {
+    const w = worlds?.[wKey];
     if (!w?.saves) return 'none';
     const keys = Object.keys(w.saves);
     if (!keys.length) return SELECTED_WORLDS.has(wKey) ? 'all' : 'none';
     let all = 0, some = 0;
     for (const sKey of keys) {
-        const st = saveSelState(wKey, sKey, mem);
+        const st = saveSelState(wKey, sKey, worlds);
         if (st === 'all') all++;
         else if (st === 'some') some++;
     }
@@ -935,17 +936,17 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
         return b;
     };
 
+    // ⚠ 这里原来还有一个「清空世界级」按钮（scope='world'）。
+    //   world 范围在 v0.9.2 就取消了，那个按钮点了**什么都不会发生** ——
+    //   用户报的「最底部的红色删除没用」就是它。已删除。
     const scopeRow1 = el('div', 'cmcc-btns');
     scopeRow1.appendChild(mkScope('清空本次存档', 'save',
         `${cur.wLabel || '当前世界'} / 本次`));
-    scopeRow1.appendChild(mkScope('清空世界级', 'world',
-        `${cur.wLabel || '当前世界'} 的世界级记忆`));
-    dangerBox.appendChild(scopeRow1);
-
     const scopeRow2 = el('div', 'cmcc-btns');
     scopeRow2.appendChild(mkScope('清空共同记忆', 'shared', '跨所有世界的共同记忆'));
     scopeRow2.appendChild(mkScope('删除整个世界', 'currentWorld',
         `${cur.wLabel || '当前世界'}（含全部存档）`));
+    dangerBox.appendChild(scopeRow1);
     dangerBox.appendChild(scopeRow2);
 
     dangerBox.appendChild(el('div', 'cmcc-hint',

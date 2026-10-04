@@ -500,6 +500,25 @@ export function renderPanel(o) {
     }
     applyOverview();
 
+    // ── 赞助（爱发电）──
+    // 用户要求单独出一个按钮。放在最底部，不打扰日常使用。
+    const sec4 = el('div', 'cmcc-sec cmcc-support');
+    const srow = el('div', 'cmcc-support-row');
+    const stxt = el('div', 'cmcc-support-text');
+    stxt.innerHTML = '<b>如果它帮到你了</b><br>'
+        + '<span class="cmcc-hint">完全自愿，不影响任何功能。</span>';
+    srow.appendChild(stxt);
+
+    const bAfd = el('a', 'menu_button cmcc-support-btn');
+    bAfd.href = 'https://afdian.com/a/WhiteShawqi';
+    bAfd.target = '_blank';
+    bAfd.rel = 'noopener noreferrer';
+    bAfd.title = '在爱发电支持作者（会在新标签页打开）';
+    bAfd.innerHTML = '<span class="cmcc-support-ico">♥</span> 爱发电赞助';
+    srow.appendChild(bAfd);
+    sec4.appendChild(srow);
+    inner.appendChild(sec4);
+
     /** 角色创建后自动刷新下拉（ST 建角色是异步的） */
     function pollForNewCharacter(round = 0) {
         if (round > 20) return;   // 最多等 ~10s
