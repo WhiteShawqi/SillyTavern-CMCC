@@ -67,15 +67,43 @@ if (preset) {
     chk(!preset.audio && !preset.avatar, '身上没有多余字段');
 
     // 记忆
+    // ⚠ 拉普兰德是「官方设定角色」，用户要求**记忆为 0** ——
+    //   她记得的一切都该是实际游玩里一起经历出来的。
     const n = countEntries(preset);
-    chk(n === 12, `★ 预置记忆 ${n} 条`);
+    chk(n === 0, `★ 预置记忆 ${n} 条（官方角色要求 0 条）`);
     const ents = Object.values(preset.worlds || {})
         .flatMap((w) => Object.values(w.saves || {}).flatMap((s) => s.entries || []));
-    const lens = ents.map((e) => e.text.length);
-    chk(Math.min(...lens) >= 30, `★ 最短记忆 ${Math.min(...lens)} 字（要求 ≥30）`);
-    chk(Math.max(...lens) <= 50, `★ 最长记忆 ${Math.max(...lens)} 字（要求 ≤50）`);
-    chk(ents.every((e) => typeof e.text === 'string' && e.text.length > 0), '每条都有文字');
-    chk(ents.every((e) => e.text.indexOf('```') < 0), '★ 文字里没有围栏残留');
+    chk(ents.length === 0, 'worlds 里确实没有任何条目');
+    chk(JSON.stringify(preset.worlds) === '{}', 'worlds 是空对象');
+
+    // ★ 官方设定核对：这些是用户在意的、我上一版写错的地方
+    const ALL = (p.description || '') + (p.personality || '') + (p.scenario || '');
+    const MUST = [
+        ['拉普兰德·萨卢佐', '全名（官方）'],
+        ['162cm', '身高（官方档案）'],
+        ['11月11日', '生日（官方档案）'],
+        ['鲁珀', '种族（官方档案）'],
+        ['叙拉古', '出身地（官方档案）'],
+        ['阿尔贝托', '父亲的名字（官方档案）'],
+        ['萨卢佐家族', '家族（官方档案）'],
+        ['狂欢节', '她的核心设定'],
+        ['假面', '礼服与面具'],
+        ['狼群', '「我就是狼群」'],
+        ['扎罗', '狼群成员（语音里出现）'],
+        ['演出', '她的说话方式核心'],
+    ];
+    const missing = MUST.filter(([k]) => !ALL.includes(k));
+    chk(missing.length === 0,
+        '★ 官方设定要点都在' + (missing.length ? ` → 缺: ${missing.map((x) => x[1]).join('、')}` : ''));
+
+    // ★ 不该再出现上一版瞎编的东西
+    const WRONG = ['灰白乱发', '左耳缺了', '右脸有旧伤疤', '刀身全是缺口',
+        '无名指上有一圈', '拖长音', '大概吧', '应该吧'];
+    const leftover = WRONG.filter((k) => ALL.includes(k));
+    chk(leftover.length === 0,
+        '★★ 没有上一版瞎编的设定' + (leftover.length ? ` → 残留: ${leftover.join('、')}` : ''));
+
+    chk(preset._source && preset._source.includes('PRTS'), '★ 标了设定来源（PRTS）');
 }
 
 // ══════════════════════════════════════════════
@@ -102,23 +130,38 @@ console.log('');
 console.log('【3】记忆导入（合并 + 去重）');
 // ══════════════════════════════════════════════
 {
+    // ⚠ 官方预设记忆为 0，所以这里用一个**自造的样本**来测合并逻辑
+    const sample = {
+        worlds: {
+            'preset:sample': {
+                label: '样本',
+                saves: { s: { label: '存档', entries: Array.from({ length: 12 },
+                    (_, i) => ({ ts: i, text: '第' + (i + 1) + '条共同经历，用来验证合并与去重逻辑是否正常' })) } },
+            },
+        },
+    };
     const worlds = {};
-    const stat = mergeWorlds(worlds, preset.worlds);
+    const stat = mergeWorlds(worlds, sample.worlds);
     chk(stat.entries === 12, `★ 导入 12 条（实际 ${stat.entries}）`);
     chk(stat.worlds === 1, '建了 1 个世界');
     chk(stat.saves === 1, '建了 1 个存档');
     chk(countEntries({ worlds }) === 12, '模型里确实有 12 条');
 
+    // 再单独验一次：空 worlds 导入 0 条，不能报错
+    const empty = {};
+    const st0 = mergeWorlds(empty, preset.worlds);
+    chk(st0.entries === 0 && st0.worlds === 0, '★ 空记忆的预设导入 0 条、不报错');
+
     // 再导一次：应该全部去重，不翻倍
-    const stat2 = mergeWorlds(worlds, preset.worlds);
+    const stat2 = mergeWorlds(worlds, sample.worlds);
     chk(stat2.entries === 0, '★ 重复导入不新增（去重生效）');
     chk(stat2.skipped === 12, `★ 12 条被识别为重复（实际 ${stat2.skipped}）`);
     chk(countEntries({ worlds }) === 12, '★ 总条数仍是 12，没有翻倍');
 
     // 加一条新的进去，再导：只加新的
-    const w = worlds['preset:lappland'];
-    w.saves.preset.entries.push({ ts: 0, text: '这是我自己后来加的一条记忆' });
-    const stat3 = mergeWorlds(worlds, preset.worlds);
+    const w = worlds['preset:sample'];
+    w.saves.s.entries.push({ ts: 0, text: '这是我自己后来加的一条记忆' });
+    const stat3 = mergeWorlds(worlds, sample.worlds);
     chk(stat3.entries === 0, '★ 自己加的不影响去重');
     chk(countEntries({ worlds }) === 13, '总条数 13');
 }
@@ -139,7 +182,10 @@ console.log('【4】导入到已有记忆里（不覆盖）');
         },
     };
     const before = countEntries({ worlds: existing });
-    const stat = mergeWorlds(existing, preset.worlds);
+    const sample2 = { 'preset:sample': { label: '样本', saves: { s: {
+        label: '存档', entries: Array.from({ length: 12 },
+            (_, i) => ({ ts: i, text: '第' + (i + 1) + '条共同经历，用来验证合并与去重逻辑是否正常' })) } } } };
+    const stat = mergeWorlds(existing, sample2);
     chk(stat.worlds === 1, '新增了 1 个世界（原有的保留）');
     chk(existing['char:existing.png'], '★ 原有世界还在');
     chk(existing['char:existing.png'].saves.chat1.entries[0].text === '我原来就有的记忆，不能被冲掉',
@@ -153,7 +199,9 @@ console.log('【5】导出 → 再导入（往返一致）');
 // ══════════════════════════════════════════════
 {
     const worlds = {};
-    mergeWorlds(worlds, preset.worlds);
+    mergeWorlds(worlds, { 'preset:sample': { label: '样本', saves: { s: {
+        label: '存档', entries: Array.from({ length: 12 },
+            (_, i) => ({ ts: i, text: '第' + (i + 1) + '条共同经历，用来验证合并与去重逻辑是否正常' })) } } } });
     const exp = buildExport({
         persona: activePersonaOf((() => {
             const s = freshSettings();
@@ -208,9 +256,13 @@ console.log('【7】记忆块的格式校验（防手改坏）');
         .flatMap((w) => Object.values(w.saves).flatMap((s) => s.entries.map((e) => e.text)));
     const block = [F + 'cmcc', ...texts, F].join('\n');
     const parsed = parseMemoryCommands(block);
-    chk(parsed.errors.length === 0, '★ 把这些记忆拼成记忆块能被解析（无错）');
-    chk(parsed.entries.length === texts.length, `★ 解析条数一致（${parsed.entries.length}）`);
-    chk(parsed.entries.every((e) => e.text.indexOf('cmcc') < 0), '没有把语言标记吃进记忆');
+    if (!texts.length) {
+        chk(true, '★ 该预设记忆为 0 条，跳过记忆块拼接校验');
+    } else {
+        chk(parsed.errors.length === 0, '★ 把这些记忆拼成记忆块能被解析（无错）');
+        chk(parsed.entries.length === texts.length, `★ 解析条数一致（${parsed.entries.length}）`);
+        chk(parsed.entries.every((e) => e.text.indexOf('cmcc') < 0), '没有把语言标记吃进记忆');
+    }
 }
 
 console.log('');
