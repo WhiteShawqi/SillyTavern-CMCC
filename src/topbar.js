@@ -13,8 +13,6 @@
  * 切换是哪个角色做陪伴者 → 在扩展设置页（和酒馆助手同位置）
  */
 
-import { WORLDBOOK_CHANNEL } from './inject.js';
-
 const DRAWER_ID = 'cmcc-top-drawer';
 const PANEL_ID = 'cmcc-top-panel';
 const LOG_TAG = '[CMCC]';
@@ -55,8 +53,10 @@ export function expandKey(key) { COLLAPSED.delete(key); }
 // ── 多选模式（模块级，重渲染后保持）──
 /** 是否处于多选模式 */
 let SELECT_MODE = false;
-/** 已勾选的记忆，键形如 'w|s|3'（世界+存档+下标），跨存档全局唯一 */
+/** 已勾选的记忆，键形如 'w\u0000s\u00003'（世界+存档+下标），跨存档全局唯一 */
 const SELECTED = new Set();
+/** 已勾选的**整个世界**（世界 key），删的时候整个一起删 */
+const SELECTED_WORLDS = new Set();
 
 /** 组合一条记忆的唯一键 */
 function entryKey(wKey, sKey, idx) {
@@ -488,13 +488,15 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
     bSelToggle.title = SELECT_MODE ? '退出多选模式' : '勾选多条记忆一起删';
     bSelToggle.onclick = () => {
         SELECT_MODE = !SELECT_MODE;
-        if (!SELECT_MODE) SELECTED.clear();
+        if (!SELECT_MODE) { SELECTED.clear(); SELECTED_WORLDS.clear(); }
         renderTopPanel({ ctx, api, onGotoSettings });
     };
     selBar.appendChild(bSelToggle);
 
     if (SELECT_MODE) {
-        selBar.appendChild(el('span', 'cmcc-meta', `已选 ${SELECTED.size} 条`));
+        const wN = SELECTED_WORLDS.size;
+        selBar.appendChild(el('span', 'cmcc-meta',
+            `已选 ${SELECTED.size} 条` + (wN ? ` + ${wN} 个世界` : '')));
 
         const bAll = el('button', 'menu_button cmcc-mini', '全选当前');
         bAll.title = '勾选当前世界里的全部记忆';
@@ -504,10 +506,6 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
                     const arr = snap.worlds?.[w.key]?.saves?.[s.key]?.entries || [];
                     arr.forEach((_, i) => SELECTED.add(entryKey(w.key, s.key, i)));
                 }
-                if (w.worldEntryCount) {
-                    const arr = snap.worlds?.[w.key]?.saves?.[WORLDBOOK_CHANNEL]?.entries || [];
-                    arr.forEach((_, i) => SELECTED.add(entryKey(w.key, WORLDBOOK_CHANNEL, i)));
-                }
             }
             renderTopPanel({ ctx, api, onGotoSettings });
         };
@@ -516,32 +514,49 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
         const bNone = el('button', 'menu_button cmcc-mini', '清空勾选');
         bNone.onclick = () => {
             SELECTED.clear();
+            SELECTED_WORLDS.clear();
             renderTopPanel({ ctx, api, onGotoSettings });
         };
         selBar.appendChild(bNone);
 
+        const totalSel = SELECTED.size + SELECTED_WORLDS.size;
         const bDel = el('button', 'menu_button cmcc-mini cmcc-danger',
-            `删除选中的 ${SELECTED.size} 条`);
-        bDel.disabled = SELECTED.size === 0;
+            wN ? `删除选中的 ${totalSel} 项` : `删除选中的 ${SELECTED.size} 条`);
+        bDel.disabled = totalSel === 0;
         bDel.onclick = async () => {
-            if (!SELECTED.size) return;
+            if (!totalSel) return;
+            const desc = [
+                SELECTED.size ? `${SELECTED.size} 条记忆` : '',
+                wN ? `${wN} 个世界（含其全部存档）` : '',
+            ].filter(Boolean).join(' + ');
             const ok = await ctx.callGenericPopup(
-                `确定删除选中的 ${SELECTED.size} 条记忆？`, ctx.POPUP_TYPE.CONFIRM);
+                `确定删除 ${desc}？此操作不可撤销。`, ctx.POPUP_TYPE.CONFIRM);
             if (!ok) return;
-            // 按「世界 + 存档」分组，一次删一组
+
+            let total = 0;
+            // ① 先删勾选的整个世界
+            for (const wk of SELECTED_WORLDS) {
+                const r = await api.deleteByScope('currentWorld', wk);
+                total += r.deleted;
+            }
+            // ② 再删勾选的零散记忆（跳过已被整个删掉的世界）
             const groups = new Map();
             for (const k of SELECTED) {
                 const [w, s, i] = parseEntryKey(k);
+                if (SELECTED_WORLDS.has(w)) continue;
                 const gk = w + '\u0000' + s;
                 if (!groups.has(gk)) groups.set(gk, { w, s, idx: [] });
                 groups.get(gk).idx.push(i);
             }
-            let total = 0;
             for (const { w, s, idx } of groups.values()) {
                 total += await api.deleteMemories(w, s, idx);
             }
+
+            const wCount = SELECTED_WORLDS.size;
             SELECTED.clear();
-            ctx.toastr?.success?.(`已删除 ${total} 条记忆`);
+            SELECTED_WORLDS.clear();
+            ctx.toastr?.success?.(
+                `已删除 ${total} 条记忆` + (wCount ? `（含 ${wCount} 个世界）` : ''));
             renderTopPanel({ ctx, api, onGotoSettings });
         };
         selBar.appendChild(bDel);
@@ -645,6 +660,22 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
         const wh = el('div', 'cmcc-world-head');
         const wchev = el('span', 'cmcc-chev', wCollapsed ? '▸' : '▾');
         wh.appendChild(wchev);
+        // 多选模式下，整个世界可以被勾选
+        if (SELECT_MODE) {
+            const wcb = document.createElement('input');
+            wcb.type = 'checkbox';
+            wcb.className = 'cmcc-check cmcc-world-check';
+            wcb.checked = SELECTED_WORLDS.has(w.key);
+            wcb.title = '勾选整个世界（删除时会删掉它下面全部存档）';
+            wcb.onclick = (ev) => ev.stopPropagation();
+            wcb.onchange = () => {
+                if (wcb.checked) SELECTED_WORLDS.add(w.key);
+                else SELECTED_WORLDS.delete(w.key);
+                renderTopPanel({ ctx, api, onGotoSettings });
+            };
+            wh.appendChild(wcb);
+            if (SELECTED_WORLDS.has(w.key)) card.classList.add('cmcc-picked');
+        }
         // L1 = 世界
         wh.appendChild(el('span', 'cmcc-lv cmcc-lv1', 'L1'));
         wh.appendChild(el('span', 'cmcc-lvname', '世界'));
@@ -672,36 +703,10 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
             continue;
         }
 
-        // ── 世界级记忆 ──
-        // ⚠ 它不是「存档」，是**世界本身的属性**（换哪次都成立）。
-        //   所以用 L2 的浅色副行样式，而不是和存档一样的方块 ——
-        //   之前做成方块，看起来像第 N 个存档，三级和二级就混了。
-        if (w.worldEntryCount) {
-            const wKeyId2 = 's:' + w.key + '|' + WORLDBOOK_CHANNEL;
-            const wsd = el('div', 'cmcc-save cmcc-wmem');
-            const wsh = el('div', 'cmcc-save-head');
-            wsh.appendChild(el('span', 'cmcc-chev', COLLAPSED.has(wKeyId2) ? '▸' : '▾'));
-            wsh.appendChild(el('span', 'cmcc-lv cmcc-lv2', 'L2'));
-            wsh.appendChild(el('span', 'cmcc-lvname', '世界记忆'));
-            const wst = el('span', 'cmcc-save-title', '（不属于某次存档，换哪次都成立）');
-            wst.title = 'world 范围：切换存档后仍然记得';
-            wsh.appendChild(wst);
-            wsh.appendChild(el('span', 'cmcc-meta', `${w.worldEntryCount} 条`));
-            wsh.onclick = () => { toggleCollapsed(wKeyId2); renderTopPanel({ ctx, api, onGotoSettings }); };
-            wsh.title = '点击展开 / 收起';
-            wsd.appendChild(wsh);
-            if (!COLLAPSED.has(wKeyId2)) {
-                wsd.appendChild(renderEntries(w.key, WORLDBOOK_CHANNEL,
-                    snap.worlds?.[w.key]?.saves?.[WORLDBOOK_CHANNEL]?.entries || []));
-                wsd.appendChild(makeAddRow(w.key, WORLDBOOK_CHANNEL, '新增一条「整个世界通用」的记忆：'));
-            }
-            card.appendChild(wsd);
-        }
-
-        // 存档小标题 —— 把「世界记忆」和「各次存档」明确隔开
-        if (w.saves.length) {
-            card.appendChild(el('div', 'cmcc-subhead cmcc-subhead-save', '存档（每次聊天一个）'));
-        }
+        // ⚠ v0.9.2：取消了「世界级记忆」（world 范围）。
+        //   它渲染出来像一个伪存档，让三级看起来是混的；
+        //   而且设计上：她该记的是「和你一起经历的事」，不是世界设定。
+        //   旧的 world 记忆会在启动时迁进各世界的第一个存档。
 
         for (const s of w.saves) {
             const sKeyId = 's:' + w.key + '|' + s.key;
@@ -765,7 +770,6 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
         for (const w of snap.stats.worlds) {
             COLLAPSED.add('w:' + w.key);
             for (const s of w.saves) COLLAPSED.add('s:' + w.key + '|' + s.key);
-            if (w.worldEntryCount) COLLAPSED.add('s:' + w.key + '|' + WORLDBOOK_CHANNEL);
         }
         renderTopPanel({ ctx, api, onGotoSettings });
     }, '收起所有世界与存档'));
@@ -778,7 +782,6 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
                     COLLAPSED.add('s:' + w.key + '|' + s.key);
                 }
             }
-            if (w.worldEntryCount) COLLAPSED.add('s:' + w.key + '|' + WORLDBOOK_CHANNEL);
         }
         renderTopPanel({ ctx, api, onGotoSettings });
     }, '只展开当前世界与当前存档'));

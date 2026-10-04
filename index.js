@@ -282,6 +282,13 @@ function ensurePosition(p) {
 
 /**
  * 写一条记忆（自动创建世界/存档）
+ *
+ * ⚠ v0.9.2：三级改两级，取消了 world 范围
+ *   原本有 save / world / shared 三级，world 级存在 world.saves['__world__']
+ *   这个「通道」里。但它渲染出来像一个伪存档，让三级看起来是混的；
+ *   而且设计上：**她该记的是"和你一起经历的事"，不是世界设定**。
+ *   所以 world 范围取消 —— 遇到就当存档级处理。
+ *
  * @param {object} pos currentPos() 的结果
  * @param {{scope?:string, kind?:string, text:string}} entry
  */
@@ -300,19 +307,37 @@ async function writeMemory(pos, entry) {
         return r.save;
     }
 
+    // ⚠ v0.9.2 起取消了 world 范围（见函数注释）：一律落到当前存档
     const { world } = ensurePosition(pos);
-    if (scope === 'world') {
-        // 世界级：挂在一个固定的 "__world__" 存档下，注入时并入当前世界
-        ensureSave(world, WORLDBOOK_CHANNEL, '整个世界');
-        addMemory(world, WORLDBOOK_CHANNEL, entry.text, entry.kind || 'world');
-        await saveToBook(book);
-        return true;
-    }
-    // 存档级（默认）
     ensureSave(world, pos.sKey, pos.saveLabel || '');
     addMemory(world, pos.sKey, entry.text, entry.kind || 'memo');
     await saveToBook(book);
     return true;
+}
+
+/**
+ * 迁移：把旧的 world 级记忆（__world__ 通道）并进该世界的第一个存档
+ * 幂等 —— 迁完通道就删掉，再跑没有可迁的
+ * @returns {number} 迁移条数
+ */
+function migrateWorldScope() {
+    let moved = 0;
+    for (const w of Object.values(CACHE.worlds)) {
+        const ent = w?.saves?.[WORLDBOOK_CHANNEL]?.entries;
+        if (!ent?.length) continue;
+        const keys = Object.keys(w.saves).filter((k) => k !== WORLDBOOK_CHANNEL);
+        let targetKey = keys[0];
+        if (!targetKey) {
+            ensureSave(w, 'legacy', '旧记忆');
+            targetKey = 'legacy';
+        }
+        for (const e of ent) {
+            addMemory(w, targetKey, e.text, e.kind || 'world');
+            moved++;
+        }
+        delete w.saves[WORLDBOOK_CHANNEL];
+    }
+    return moved;
 }
 
 // ─────────────────────────────────────────────
@@ -332,7 +357,7 @@ function onSettingsReady(generateData) {
         const w = CACHE.worlds[p.wKey];
         const save = w?.saves?.[p.sKey];
         const others = w ? Object.entries(w.saves)
-            .filter(([k]) => k !== p.sKey)
+            .filter(([k]) => k !== p.sKey && k !== WORLDBOOK_CHANNEL)
             .sort((a, b) => (b[1].lastSeen || 0) - (a[1].lastSeen || 0))
             .map(([, s]) => s.label) : [];
 
@@ -397,11 +422,14 @@ function summarizePrompt(companionName, worldName, saveName, transcript) {
         '',
         '请从**这位陪伴者的视角**提取她新获得的信息，输出严格 JSON（不要解释、不要 markdown 代码块）：',
         '{',
-        '  "entries": ["她亲身经历或得知的事，每条一句话，第一人称省略主语，不超过 40 字"]',
+        '  "entries": ["她亲身经历的事，一条 30~50 字：写清楚发生了什么、和谁、在哪里，要有细节"]',
         '}',
         '',
         '要求：',
         '- 只写**确实发生过**的事，不要推测、不要编造。',
+        '- 每条 30~50 字，要有具体细节（谁、在哪、做了什么、结果如何），',
+        '  不要写成"发生了某事"这种空话。',
+        '- 用第一人称视角叙述，省略主语（"我"不用写出来）。',
         '- 优先记录：地点变化、遇到的人、关键事件、与用户之间的互动。',
         '- 最多 6 条；没有新信息就输出 {"entries":[]}。',
         '',
@@ -707,14 +735,20 @@ const api = {
         return n;
     },
     /**
-     * 按范围删除（作用于当前所在位置）
-     * @param {'save'|'world'|'shared'|'currentWorld'} scope
+     * 按范围删除
+     * @param {'save'|'shared'|'currentWorld'} scope
+     *        （world 范围已在 v0.9.2 取消，旧数据启动时自动迁移）
+     * @param {string} [wKey] 指定世界；不给就用当前所在世界
      * @returns {{deleted:number, what:string}}
      */
-    async deleteByScope(scope) {
+    async deleteByScope(scope, wKey) {
         await loadFromBook();
         const p = currentPos();
-        const r = clearByScope(CACHE.worlds, scope, p);
+        // 允许指定世界（多选删除整个世界的场景）
+        const target = wKey
+            ? { ...p, wKey, wLabel: CACHE.worlds[wKey]?.label || wKey }
+            : p;
+        const r = clearByScope(CACHE.worlds, scope, target);
         purgeEmpty(CACHE.worlds);
         await saveToBook();
         panel?.refresh();
@@ -922,21 +956,54 @@ jQuery(async () => {
             refreshTop();
         });
     }
+    if (event_types.GROUP_UPDATED) {
+        eventSource.on(event_types.GROUP_UPDATED, async () => {
+            try { await syncPosition(currentPos()); } catch (e) { /* ignore */ }
+            panel?.refresh();
+            refreshTop();
+        });
+    }
+
+    // ★ 切换角色卡时同步当前位置
+    // ⚠ ST 里**没有**「角色被选中」这个事件（我一开始写了 CHARACTER_SELECTED，
+    //   查过 events.js 发现不存在），只能轮询。
+    //   只比较 avatar / groupId，变了才动，开销很小。
+    let lastAvatar = null;
+    let lastGroup = null;
+    setInterval(() => {
+        try {
+            const c = ctx();
+            const av = c.characters?.[c.characterId]?.avatar || '';
+            const g = c.groupId || '';
+            if (lastAvatar === null) { lastAvatar = av; lastGroup = g; return; }
+            if (av === lastAvatar && g === lastGroup) return;
+            lastAvatar = av;
+            lastGroup = g;
+            syncPosition(currentPos()).then(() => {
+                panel?.refresh();
+                refreshTop();
+            }).catch(() => {});
+        } catch (e) { /* ignore */ }
+    }, 1000);
 
     try { await syncPosition(currentPos()); } catch (e) { /* ignore */ }
 
-    // 旧版本会给每个进过的存档建空壳，升级后收一次尾
+    // 启动收尾（延迟 2 秒，等 ST 把角色/聊天都准备好）：
+    //  ① 迁移已取消的 world 级记忆 → 各世界的第一个存档
+    //  ② 清掉旧版本留下的空存档/空世界
     setTimeout(async () => {
         try {
             const book = await loadFromBook();
+            const moved = migrateWorldScope();
+            if (moved) log('迁移旧的世界级记忆 %d 条', moved);
             const r = purgeEmpty(CACHE.worlds);
-            if (r.saves || r.worlds) {
+            if (r.saves || r.worlds) log('清理空存档 %d 个 / 空世界 %d 个', r.saves, r.worlds);
+            if (moved || r.saves || r.worlds) {
                 await saveToBook(book);
-                log('清理空存档 %d 个 / 空世界 %d 个', r.saves, r.worlds);
                 panel?.refresh();
                 refreshTop();
             }
-        } catch (e) { warn('清理空存档失败', e); }
+        } catch (e) { warn('启动收尾失败', e); }
     }, 2000);
 
     log('已加载。模式=%s 陪伴者=%s 启用=%s 记忆注入=%s',

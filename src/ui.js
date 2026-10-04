@@ -16,6 +16,9 @@ const ID = 'cmcc_settings';
  */
 let SETTINGS_EXPANDED = true;
 
+/** 「记忆总览」是否展开（模块级，跨重渲染保持）。默认收起，只看摘要。 */
+let OVERVIEW_OPEN = false;
+
 function el(tag, cls, html) {
     const e = document.createElement(tag);
     if (cls) e.className = cls;
@@ -338,12 +341,36 @@ export function renderPanel(o) {
     sec2.appendChild(row2);
     inner.appendChild(sec2);
 
-    // ── 记忆总览 ──
-    const sec3 = el('div', 'cmcc-sec');
-    sec3.appendChild(el('div', 'cmcc-sec-title', '记忆总览'));
-    const stats = el('div', 'cmcc-stats');
+    // ── 记忆总览（可收起）──
+    // 用户反馈：原来是个不美化的长条，也不能收。改成和主面板一样的折叠块，
+    // 标题行放一个「摘要」一眼看规模，详细列表收起来。
+    const sec3 = el('div', 'cmcc-sec cmcc-ov');
+    const ovHead = el('div', 'cmcc-ov-head');
+    ovHead.appendChild(el('span', 'cmcc-chev2', OVERVIEW_OPEN ? '▾' : '▸'));
+    ovHead.appendChild(el('span', 'cmcc-ov-title', '记忆总览'));
+    const ovSummary = el('span', 'cmcc-meta cmcc-ov-summary', '');
+    ovHead.appendChild(ovSummary);
+    const bTop = el('button', 'menu_button cmcc-mini', '去编辑');
+    bTop.title = '打开顶部面板改人设 / 记忆';
+    bTop.onclick = (ev) => { ev.stopPropagation(); onOpenTop(); };
+    ovHead.appendChild(bTop);
+    ovHead.onclick = () => {
+        OVERVIEW_OPEN = !OVERVIEW_OPEN;
+        applyOverview();
+    };
+    ovHead.title = '点击展开 / 收起';
+    sec3.appendChild(ovHead);
+
+    const stats = el('div', 'cmcc-stats cmcc-ov-body');
     sec3.appendChild(stats);
     inner.appendChild(sec3);
+
+    function applyOverview() {
+        const chev = ovHead.querySelector('.cmcc-chev2');
+        if (chev) chev.textContent = OVERVIEW_OPEN ? '▾' : '▸';
+        stats.style.display = OVERVIEW_OPEN ? 'block' : 'none';
+    }
+    applyOverview();
 
     /** 角色创建后自动刷新下拉（ST 建角色是异步的） */
     function pollForNewCharacter(round = 0) {
@@ -385,24 +412,45 @@ export function renderPanel(o) {
         const s = snap.stats;
         let cur = { wLabel: '' };
         try { cur = api.currentPos(); } catch (e) { /* ignore */ }
-        const rows = [
-            `<b>记忆世界书</b>：<code>${snap.bookName}</code>`,
-            `<b>记忆</b>：${s.worldCount} 个世界 · ${s.totalEntries} 条记忆`
-            + (snap.shared?.length ? ` / 共同 ${snap.shared.length} 条` : ''),
-            `当前位置：${cur.wLabel || '—'}`,
-        ];
+        // 标题行的摘要（收起状态也能一眼看到规模）
+        ovSummary.textContent = s.worldCount
+            ? `${s.worldCount} 个世界 · ${s.totalEntries} 条 · 当前 ${cur.wLabel || '—'}`
+            : '还是空的';
+
+        // 卡片式布局
+        const rows = [];
+        rows.push('<div class="cmcc-ov-cards">'
+            + `<div class="cmcc-ov-card"><span class="cmcc-ov-num">${s.worldCount}</span>`
+            + '<span class="cmcc-ov-lab">个世界</span></div>'
+            + `<div class="cmcc-ov-card"><span class="cmcc-ov-num">${s.totalEntries}</span>`
+            + '<span class="cmcc-ov-lab">条记忆</span></div>'
+            + `<div class="cmcc-ov-card"><span class="cmcc-ov-num">${s.sharedCount || snap.shared?.length || 0}</span>`
+            + '<span class="cmcc-ov-lab">条共同</span></div>'
+            + '</div>');
+
+        rows.push(`<div class="cmcc-ov-line"><span class="cmcc-ov-k">记忆世界书</span>`
+            + `<code>${snap.bookName}</code></div>`);
+        rows.push(`<div class="cmcc-ov-line"><span class="cmcc-ov-k">当前位置</span>`
+            + `${cur.wLabel || '—'}</div>`);
+
         for (const w of s.worlds.slice(0, 8)) {
-            const saves = w.saves.slice(0, 4).map((x) => `${x.label}(${x.count})`).join('、');
+            const saves = w.saves.slice(0, 4)
+                .map((x) => `<span class="cmcc-ov-tag">${x.label}<i>${x.count}</i></span>`)
+                .join('');
             rows.push(`<div class="cmcc-world-line">`
-                + `<b>${w.label}</b> — ${w.saveCount} 个存档 · ${w.count} 条记忆`
-                + `<div class="cmcc-saves">${saves}${w.saves.length > 4 ? ' …' : ''}</div></div>`);
+                + `<div class="cmcc-ov-wrow"><b>${w.label}</b>`
+                + `<span class="cmcc-meta">${w.saveCount} 个存档 · ${w.count} 条记忆</span></div>`
+                + `<div class="cmcc-saves">${saves}`
+                + `${w.saves.length > 4 ? '<span class="cmcc-ov-tag">…</span>' : ''}</div></div>`);
         }
-        if (s.worlds.length > 8) rows.push(`… 还有 ${s.worlds.length - 8} 个世界`);
-        if (!s.worldCount) rows.push('<span class="cmcc-hint">'
-            + '<b>记忆是空的</b> —— 这是正常的，默认只有人设。<br>'
-            + '开始玩之后，她会把值得记的事自动记下来（读正文里的 <code>cmcc</code> 块）。</span>');
-        rows.push('<span class="cmcc-hint">改人设 / 改记忆：点「打开顶部面板」，'
-            + '或用酒馆顶部那个人形图标。</span>');
+        if (s.worlds.length > 8) {
+            rows.push(`<div class="cmcc-ov-line cmcc-hint">… 还有 ${s.worlds.length - 8} 个世界</div>`);
+        }
+        if (!s.worldCount) {
+            rows.push('<div class="cmcc-hint cmcc-ov-empty">'
+                + '<b>记忆是空的</b> —— 这是正常的，默认只有人设。<br>'
+                + '开始玩之后，她会把值得记的事自动记下来（读正文里的 <code>cmcc</code> 块）。</div>');
+        }
         stats.innerHTML = rows.map((x) => `<div class="cmcc-stat-line">${x}</div>`).join('');
     }
     refresh();

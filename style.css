@@ -761,3 +761,125 @@
     padding: 6px 0 0 0;
     border-top: 1px dashed rgba(127 127 127 / 0.25);
 }
+
+/* ══ 设置页记忆总览（可收起 + 卡片式）══ */
+.cmcc-ov-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 0;
+    cursor: pointer;
+    user-select: none;
+    border-radius: 4px;
+}
+
+.cmcc-ov-head:hover { background: rgba(127 127 127 / 0.08); }
+
+.cmcc-chev2 {
+    flex: 0 0 auto;
+    width: 1em;
+    opacity: 0.55;
+    font-size: 0.9em;
+    text-align: center;
+}
+
+.cmcc-ov-title {
+    font-weight: bold;
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+.cmcc-ov-summary {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cmcc-ov-body { padding: 6px 0 2px 4px; }
+
+.cmcc-ov-cards {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+}
+
+.cmcc-ov-card {
+    flex: 1 1 70px;
+    min-width: 70px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 6px 8px;
+    border-radius: 6px;
+    background: rgba(122 162 247 / 0.10);
+    border: 1px solid rgba(122 162 247 / 0.22);
+}
+
+.cmcc-ov-num {
+    font-size: 1.25em;
+    font-weight: bold;
+    color: #b9cdff;
+    line-height: 1.2;
+}
+
+.cmcc-ov-lab {
+    font-size: 0.72em;
+    opacity: 0.65;
+    white-space: nowrap;
+}
+
+.cmcc-ov-line {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+    padding: 2px 0;
+    line-height: 1.6;
+}
+
+.cmcc-ov-k {
+    flex: 0 0 auto;
+    min-width: 5.5em;
+    font-size: 0.85em;
+    opacity: 0.6;
+}
+
+.cmcc-ov-wrow {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+    flex-wrap: wrap;
+}
+
+.cmcc-ov-tag {
+    display: inline-block;
+    font-size: 0.75em;
+    padding: 1px 6px;
+    margin: 1px 4px 1px 0;
+    border-radius: 999px;
+    background: rgba(140 140 140 / 0.15);
+    border: 1px solid rgba(140 140 140 / 0.25);
+    white-space: nowrap;
+}
+
+.cmcc-ov-tag i {
+    font-style: normal;
+    opacity: 0.6;
+    margin-left: 3px;
+}
+
+.cmcc-ov-empty {
+    padding: 6px 0;
+    line-height: 1.7;
+}
+
+/* 世界行给点左边界，和上面的卡片区分开 */
+.cmcc-ov-body .cmcc-world-line {
+    margin: 4px 0;
+    padding: 5px 8px;
+    border-radius: 5px;
+    background: rgba(127 127 127 / 0.06);
+    border-left: 2px solid rgba(122 162 247 / 0.35);
+}
