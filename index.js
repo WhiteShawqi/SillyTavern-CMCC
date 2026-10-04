@@ -32,6 +32,7 @@ import {
 import { buildGuide, buildMemoryBlock, buildInjectionText, injectIntoRequest,
          estimateTokens, WORLDBOOK_CHANNEL } from './src/inject.js';
 import { parseMemoryCommands, commandSpec, stripBlocks } from './src/memo.js';
+import { extractPresetSummary, splitSummary, summaryHint } from './src/summary.js';
 import { renderPanel } from './src/ui.js';
 import { mountTopDrawer, renderTopPanel, openTopPanel, setRenderHook } from './src/topbar.js';
 
@@ -423,7 +424,9 @@ function onSettingsReady(generateData) {
             settings,
             saveSwitched: autoState.justSwitched,
             // MVU 式：告诉她怎么输出记忆块
-            memoSpec: settings.readMemoryCommands === false ? '' : commandSpec(),
+            memoSpec: settings.readMemoryCommands === false
+                ? ''
+                : (commandSpec() + '\n\n' + summaryHint()),
         });
         if (!guide) return;
 
@@ -611,12 +614,6 @@ async function onMessageReceived(index) {
         const text = typeof msg?.mes === 'string' ? msg.mes : '';
         if (!text) return;
 
-        const { entries, errors, blockCount } = parseMemoryCommands(text);
-        if (errors.length && settings.debug) {
-            warn('记忆块解析提示：%s', errors.join(' / '));
-        }
-        if (!blockCount) return;
-
         // 去重：这条消息已经处理过就跳过
         const sig = String(text.length) + ':' + text.slice(-80);
         autoState.seen = autoState.seen || new Set();
@@ -626,17 +623,41 @@ async function onMessageReceived(index) {
             autoState.seen = new Set([...autoState.seen].slice(-200));
         }
 
-        if (!entries.length) {
+        // ── 来源 ①：显式的 ```cmcc / <details class="cmcc"> 记忆块（优先）──
+        const { entries, errors, blockCount } = parseMemoryCommands(text);
+        if (errors.length && settings.debug) {
+            warn('记忆块解析提示：%s', errors.join(' / '));
+        }
+
+        let todo = entries;
+        let source = '记忆块';
+
+        // ── 来源 ②：预设自带的 <summary> 摘要 ──
+        //   用户的想法：预设已经让 AI 写 150 字摘要了，插件直接读它，
+        //   不用再让 AI 写第二份（省 token，也少一个正文块）。
+        if (!todo.length) {
+            const sum = extractPresetSummary(text);
+            if (sum) {
+                todo = splitSummary(sum).map((line) => ({ scope: 'save', text: line }));
+                source = '预设摘要';
+            }
+        }
+
+        if (!blockCount && !todo.length) return;
+
+        if (!todo.length) {
             if (settings.debug) log('发现记忆块，但没有有效条目');
             return;
         }
+        // 摘要可能被切成很多句，限制一下
+        if (todo.length > 8) todo = todo.slice(0, 8);
 
         let n = 0;
-        for (const e of entries) {
+        for (const e of todo) {
             try { await writeMemory(p, e); n++; } catch (err) { warn('写记忆失败', err); }
         }
         if (n) {
-            log('从正文记忆块写入 %d 条（%s / %s）', n, p.wLabel, p.saveLabel || '本次');
+            log('从%s写入 %d 条（%s / %s）', source, n, p.wLabel, p.saveLabel || '本次');
             panel?.refresh();
             api.refreshTop();
         }

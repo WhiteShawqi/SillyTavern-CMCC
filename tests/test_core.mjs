@@ -42,6 +42,10 @@ const {
 const CH = WORLDBOOK_CHANNEL;
 
 const {
+    extractPresetSummary, splitSummary, summaryHint,
+} = await import('../src/summary.js');
+
+const {
     extractBlocks, stripBlocks, parseBlock, parseMemoryCommands, commandSpec,
     BLOCK_LANG, MAX_ENTRIES_PER_BLOCK, MAX_TEXT_LEN,
 } = await import('../src/memo.js');
@@ -784,5 +788,76 @@ const bad22 = new Set();
 chk(bad22.size === 0,
     '★ index.js 里动词式裸调用都有定义' + (bad22.size ? ` → 可疑: ${[...bad22].join(', ')}` : ''));
 console.log('');
+
+// ── 23. 读预设自带的 <summary> 摘要 ──
+console.log('【23】预设摘要 → 记忆');
+// 预设原文（Kemini_Dramatron_v3.2 prompts[50]）：
+//   摘要格式示例： <summary> 用约150字概括本条回复的具体事件… </summary>
+const SUM_TEXT = '朱九自虚空出手以虚空大擒拿瞬间禁锢正在采撷赤阳金莲的天仙书院奇才凤舞，'
+    + '并连同圣药一并收入万象乾坤小世界。在飞仙池畔，朱九向凤舞阐明群芳天阙开阁与挂牌论道之意，'
+    + '随后将其带出小世界返回天仙圣城后山水榭。展若彤与魔女现身与凤舞相认，'
+    + '凤舞放下戒备并解下长弓正式入驻仙坊。';
+
+// ① 原始形态（AI 刚输出，还没被预设正则处理）
+const rawMsg = '正文正文正文。\n\n<summary>\n' + SUM_TEXT + '\n</summary>';
+chk(extractPresetSummary(rawMsg) === SUM_TEXT, '★ 读到裸 <summary>（原始形态）');
+
+// ② 已渲染形态（预设正则把它变成了折叠卡片）
+const renderedMsg = '正文正文。\n\n<details><summary>摘要</summary>\n'
+    + SUM_TEXT + '\n</details>';
+chk(extractPresetSummary(renderedMsg) === SUM_TEXT, '★ 读到已折叠的 <details><summary>摘要</summary>');
+
+// ③ 我们自己的 cmcc 折叠块不能被误读成摘要
+const ourBlock = '<details class="cmcc"><summary>本次记忆</summary>\n'
+    + '沈清梦在琉璃盒内主动索求\n</details>';
+chk(extractPresetSummary(ourBlock) === '', '★ 不误读我们自己的 cmcc 块');
+
+// ④ 没有摘要就返回空
+chk(extractPresetSummary('就是一段普通正文') === '', '无摘要 → 空串');
+chk(extractPresetSummary('') === '', '空串安全');
+chk(extractPresetSummary(null) === '', 'null 安全');
+
+// ⑤ 多种标题写法
+chk(extractPresetSummary('<details><summary>总结</summary>X</details>') === 'X', '认「总结」标题');
+chk(extractPresetSummary('<details><summary>summary</summary>Y</details>') === 'Y', '认英文 summary');
+
+// ⑥ 带 HTML 的摘要要清理
+chk(extractPresetSummary('<summary>A<br>B<b>C</b></summary>') === 'A\nBC', '★ 清掉 HTML 标签、<br> 转换行');
+
+// ── 切句 ──
+console.log('');
+console.log('【23b】摘要切句');
+const sents = splitSummary(SUM_TEXT);
+chk(sents.length >= 2, `★ 150 字摘要切成多条（实际 ${sents.length} 条）`);
+chk(sents.every((x) => x.length <= 120), '每条不超过 120 字');
+chk(sents.join('').replace(/\s/g, '') === SUM_TEXT.replace(/\s/g, ''), '★ 切句不丢字');
+chk(splitSummary('') .length === 0, '空 → 空数组');
+chk(splitSummary(null).length === 0, 'null → 空数组');
+chk(splitSummary('只有一句话。').length === 1, '单句 → 1 条');
+chk(splitSummary('a。b。c。d。e。f。g。h。i。j。k。l。m。n。', { max: 5 }).length <= 5, '★ max 上限生效');
+// 长句按逗号再切
+const longOne = '第一段很长的内容，' + '继续描述细节，'.repeat(8) + '结束。';
+chk(splitSummary(longOne).every((x) => x.length <= 120), '★ 超长句会再切');
+
+// ── summaryHint ──
+const hint = summaryHint();
+chk(hint.includes('长期记忆'), '★ 提示词说明摘要会被当记忆');
+chk(hint.includes('具体事件'), '提示词要求写具体事件');
+chk(hint.includes('150'), '提示词保留字数约定');
+console.log('');
+
+// ── 24. 接入：没有 cmcc 块时用摘要 ──
+console.log('【24】摘要接入记忆流程');
+const msgWithSummary = '正文。\n<summary>' + SUM_TEXT + '</summary>';
+const cm = parseMemoryCommands(msgWithSummary);
+chk(cm.blockCount === 0, '这条消息没有 cmcc 块');
+const fromSum = splitSummary(extractPresetSummary(msgWithSummary));
+chk(fromSum.length >= 2, '★ 于是从摘要取到多条记忆');
+chk(fromSum.every((x) => typeof x === 'string' && x.length), '切出来的都是非空字符串');
+// 两者都有时，cmcc 块优先
+const both = msgWithSummary + '\n<details class="cmcc"><summary>本次记忆</summary>\n显式记忆\n</details>';
+chk(parseMemoryCommands(both).entries.length === 1, '★ 两者都有时，cmcc 块优先被解析');
+console.log('');
+
 console.log(fail === 0 ? `✓ 全部通过 (${pass} 项)` : `❌ 失败 ${fail} 项 / 共 ${pass + fail} 项`);
 process.exit(fail ? 1 : 0);
