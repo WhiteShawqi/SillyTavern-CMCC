@@ -28,7 +28,8 @@ import {
     serializeWorld, parseWorld, serializeShared, parseShared,
 } from './src/store.js';
 
-import { buildGuide, buildMemoryBlock, buildInjectionText, injectIntoRequest, estimateTokens } from './src/inject.js';
+import { buildGuide, buildMemoryBlock, buildInjectionText, injectIntoRequest,
+         estimateTokens, WORLDBOOK_CHANNEL } from './src/inject.js';
 import { parseMemoryCommands, commandSpec, stripBlocks } from './src/memo.js';
 import { renderPanel } from './src/ui.js';
 import { mountTopDrawer, renderTopPanel, openTopPanel, setRenderHook } from './src/topbar.js';
@@ -255,14 +256,18 @@ async function syncPosition(p, { persist = true } = {}) {
     autoState.pendingWorld = { key: p.wKey, label: p.wLabel };
     autoState.pendingSave = { key: p.sKey, label: p.saveLabel || '' };
 
-    const others = w ? Object.entries(w.saves)
-        .filter(([k]) => k !== p.sKey)
+    // 世界通道 __world__ 不算「存档」
+    const otherEntries = w ? Object.entries(w.saves)
+        .filter(([k]) => k !== p.sKey && k !== WORLDBOOK_CHANNEL) : [];
+    const others = otherEntries
         .sort((a, b) => (b[1].lastSeen || 0) - (a[1].lastSeen || 0))
-        .map(([, s]) => s.label) : [];
+        .map(([, s]) => s.label);
 
     return {
         saveLabel: save?.label || p.saveLabel || '本次',
-        saveCount: w ? Object.keys(w.saves).length : 0,
+        saveCount: w
+            ? Object.keys(w.saves).filter((k) => k !== WORLDBOOK_CHANNEL).length
+            : 0,
         otherSaveLabels: others,
         switched: switched || changedWorld,
         isNew,
@@ -315,8 +320,8 @@ async function writeMemory(pos, entry) {
     const { world } = ensurePosition(pos);
     if (scope === 'world') {
         // 世界级：挂在一个固定的 "__world__" 存档下，注入时并入当前世界
-        ensureSave(world, '__world__', '整个世界');
-        addMemory(world, '__world__', entry.text, entry.kind || 'world');
+        ensureSave(world, WORLDBOOK_CHANNEL, '整个世界');
+        addMemory(world, WORLDBOOK_CHANNEL, entry.text, entry.kind || 'world');
         await saveToBook(book);
         return true;
     }
@@ -352,7 +357,8 @@ function onSettingsReady(generateData) {
             companion,
             wLabel: p.wLabel,
             saveLabel: save?.label || '本次',
-            saveCount: w ? Object.keys(w.saves).length : 1,
+            saveCount: w
+                ? Object.keys(w.saves).filter((k) => k !== WORLDBOOK_CHANNEL).length : 0,
             otherSaveLabels: others,
             settings,
             saveSwitched: autoState.justSwitched,

@@ -142,17 +142,20 @@ const fakeApi = {
         stats: {
             worldCount: 3, totalEntries: 142,
             worlds: [
-                { key: 'char:gfb.png', label: '全球冰封 v3.1.3', saveCount: 2, count: 88,
+                { key: 'char:gfb.png', label: '全球冰封 v3.1.3', saveCount: 2, count: 88, worldEntryCount: 2,
                   saves: [
                       { key: 's1', label: '存档1', count: 45 },
                       { key: 's2', label: '存档2', count: 43 },
                   ] },
-                { key: 'char:mz.png', label: '漫综：世界观', saveCount: 1, count: 54,
+                { key: 'char:mz.png', label: '漫综：世界观', saveCount: 1, count: 54, worldEntryCount: 0,
                   saves: [{ key: 's1', label: '存档1', count: 54 }] },
             ],
         },
         worlds: {
-            'char:gfb.png': { saves: { s1: { entries: [
+            'char:gfb.png': { saves: { '__world__': { label: '整个世界', entries: [
+                { text: '这世界有一种叫黑石的矿' },
+                { text: '温度常年零下' },
+            ] }, s1: { entries: [
                 { text: '在避难所里冻了一夜' },
                 { text: '找到一箱罐头' },
                 { text: '和阿米娅一起守了半夜的火堆' },
@@ -206,6 +209,11 @@ function measure() {
         okDisplay: cs.display === 'block',
         okPosition: cs.position === 'absolute',
         openState: isTopPanelOpen(),
+        // ★ 世界级记忆区块是否显示出来
+        worldSectionShown: !!document.querySelector('#cmcc-top-panel_body .cmcc-save-world'),
+        worldSectionText: (document.querySelector('#cmcc-top-panel_body .cmcc-save-world')?.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80),
+        saveBlocks: document.querySelectorAll('#cmcc-top-panel_body .cmcc-save').length,
+        entryTexts: [...document.querySelectorAll('#cmcc-top-panel_body .cmcc-entry-text')].map(e => e.textContent).slice(0, 8),
         // ★ 内置模式渲染检测
         bodyText: (() => {
             const b = document.getElementById('cmcc-top-panel_body');

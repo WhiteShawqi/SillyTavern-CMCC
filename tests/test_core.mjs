@@ -36,6 +36,7 @@ const {
 const {
     buildGuide, injectIntoRequest, stripFromMessages, estimateTokens,
     buildRules, buildWhereBlock, buildMemoryBlock, buildInjectionText, TAG,
+    WORLDBOOK_CHANNEL,
 } = await import('../src/inject.js');
 
 const {
@@ -456,6 +457,75 @@ const afterAdd = emptyWorld('测试世界');
 ensureSave(afterAdd, 's1', '存档1');
 chk(Object.keys(afterAdd.saves).length === 1, '写入时才创建存档');
 chk(worldStats(afterAdd).count === 0, '★ 刚创建的存档是空的（0 条）');
+
+
+// ── 16. 世界级记忆真的会被注入（回归）──
+console.log('【16】世界级记忆注入');
+const worldModel = {
+    worlds: {
+        'char:A.png': {
+            label: '全球冰封', lastSeen: 5,
+            saves: {
+                [WORLDBOOK_CHANNEL]: { label: '整个世界', lastSeen: 5, entries: [
+                    { ts: 1, text: '这世界有一种叫黑石的矿，能烧' },
+                ] },
+                s1: { label: '存档1', lastSeen: 5, entries: [
+                    { ts: 2, text: '在避难所里冻了一夜' },
+                ] },
+                s2: { label: '存档2', lastSeen: 3, entries: [
+                    { ts: 3, text: '这次直接进了地堡' },
+                ] },
+            },
+        },
+    },
+};
+
+// 处在存档1：世界级 + 存档1 + 存档2 都该在
+const wm = buildMemoryBlock({
+    mem: worldModel, wKey: 'char:A.png', sKey: 's1', wLabel: '全球冰封', budget: 4000,
+});
+chk(wm.includes('黑石'), '★ 世界级记忆被注入（曾经完全丢失）');
+chk(wm.includes('这个世界的常识'), '★ 世界级记忆有独立标题');
+chk(wm.includes('这一次发生的事'), '★ 存档记忆有独立标题');
+chk(wm.includes('在避难所里冻了一夜'), '存档1 记忆被注入');
+chk(wm.includes('地堡'), '存档2 作为「另外一次经历」被注入');
+chk(!wm.includes('整个世界（另外一次经历）'), '★ 世界通道没被当成一个存档');
+chk(wm.indexOf('黑石') < wm.indexOf('在避难所里冻了一夜'), '世界级排在存档级之前');
+
+// 换到存档2：世界级仍在（这正是 world 范围的意义）
+const wm2 = buildMemoryBlock({
+    mem: worldModel, wKey: 'char:A.png', sKey: 's2', wLabel: '全球冰封', budget: 4000,
+});
+chk(wm2.includes('黑石'), '★ 换存档后世界级记忆依然在（world 范围的意义）');
+chk(wm2.includes('地堡'), '换存档后当前存档记忆正确');
+chk(wm2.includes('避难所'), '旧存档变成「另外一次经历」');
+
+// 只有世界级记忆、没有存档记忆时也不该丢
+const onlyWorld = {
+    worlds: { w: { label: 'W', lastSeen: 1, saves: {
+        [WORLDBOOK_CHANNEL]: { label: '整个世界', lastSeen: 1, entries: [{ ts: 1, text: '只有世界级' }] },
+    } } },
+};
+const ow = buildMemoryBlock({ mem: onlyWorld, wKey: 'w', sKey: 'sX', wLabel: 'W', budget: 2000 });
+chk(ow.includes('只有世界级'), '★ 只有世界级记忆时也能注入');
+chk(ow.includes('当前位置：W'), '没有存档时标题不显示存档名');
+
+// 世界通道不计入存档数
+const wst = worldStats(worldModel.worlds['char:A.png']);
+chk(wst.saveCount === 2, '★ 世界通道不计入存档数（应为 2）');
+chk(wst.count === 3, '世界级条目仍计入这个世界总数');
+chk(wst.worldEntryCount === 1, '单独暴露世界级条目数');
+chk(wst.saves.every((x) => x.key !== WORLDBOOK_CHANNEL), '存档列表里没有世界通道');
+
+// bookStats 排除内部容器
+const bst = bookStats({
+    'char:A.png': worldModel.worlds['char:A.png'],
+    __shared__: { label: '共同', saves: { common: { label: '共同', entries: [{ ts: 1, text: 'x' }] } } },
+});
+chk(bst.worldCount === 1, '★ __shared__ 不算一个世界');
+chk(bst.sharedCount === 1, '共同记忆单独计数');
+chk(!bst.worlds.some((w) => w.key === '__shared__'), '世界列表里没有 __shared__');
+console.log('');
 
 console.log(fail === 0 ? `✓ 全部通过 (${pass} 项)` : `❌ 失败 ${fail} 项 / 共 ${pass + fail} 项`);
 process.exit(fail ? 1 : 0);

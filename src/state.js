@@ -172,13 +172,24 @@ export function renameWorld(world, label) {
 // 统计
 // ─────────────────────────────────────────────
 
+/**
+ * 世界级记忆的容器通道名（world.saves['__world__']）
+ * ⚠ 与 inject.js 的 WORLDBOOK_CHANNEL 必须一致。
+ *   这里不 import 是为了让 state.js 保持零依赖（纯逻辑，便于测试）。
+ */
+export const WORLDBOOK_CHANNEL = '__world__';
+
 export function worldStats(world) {
-    const saves = Object.entries(world?.saves || {});
-    const count = saves.reduce((a, [, s]) => a + (s.entries || []).length, 0);
+    // 世界通道不是一个「存档」，统计里要排除，但它的条目数要算进这个世界
+    const all = Object.entries(world?.saves || {});
+    const saves = all.filter(([k]) => k !== WORLDBOOK_CHANNEL);
+    const worldEntries = world?.saves?.[WORLDBOOK_CHANNEL]?.entries || [];
+    const count = all.reduce((a, [, s]) => a + (s.entries || []).length, 0);
     return {
         label: world?.label || '未知世界',
         saveCount: saves.length,
         count,
+        worldEntryCount: worldEntries.length,
         lastSeen: world?.lastSeen || 0,
         saves: saves.map(([k, s]) => ({
             key: k, label: s.label, count: (s.entries || []).length,
@@ -187,13 +198,17 @@ export function worldStats(world) {
     };
 }
 
-/** 所有世界的汇总统计 */
+/** 所有世界的汇总统计（排除 __shared__ 这类内部容器） */
 export function bookStats(worlds) {
-    const list = Object.entries(worlds || {}).map(([k, w]) => ({ key: k, ...worldStats(w) }));
+    const list = Object.entries(worlds || {})
+        .filter(([k]) => !k.startsWith('__'))
+        .map(([k, w]) => ({ key: k, ...worldStats(w) }));
     list.sort((a, b) => b.lastSeen - a.lastSeen);
+    const shared = worlds?.__shared__?.saves?.common?.entries || [];
     return {
         worldCount: list.length,
         totalEntries: list.reduce((a, x) => a + x.count, 0),
+        sharedCount: shared.length,
         worlds: list,
     };
 }

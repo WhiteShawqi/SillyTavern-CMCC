@@ -517,3 +517,15 @@
     background: rgba(95 184 95 / 0.12) !important;
     line-height: 1.6;
 }
+
+/* 世界级记忆区块（整个世界通用，不是一个「存档」） */
+.cmcc-save-world {
+    border-left: 2px solid rgba(217 164 65 / 0.6);
+    padding-left: 6px;
+    margin-bottom: 6px;
+}
+
+.cmcc-save-world .cmcc-save-title {
+    color: #d9a441;
+    font-style: italic;
+}

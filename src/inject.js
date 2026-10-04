@@ -15,6 +15,12 @@
 
 export const TAG = 'cmcc_guide';
 
+/**
+ * 世界级记忆的容器通道名（存在 world.saves['__world__']）
+ * 与 index.js 的 writeMemory() 必须一致。
+ */
+export const WORLDBOOK_CHANNEL = '__world__';
+
 /** 粗估 token */
 export function estimateTokens(s) {
     return s ? Math.ceil(String(s).length * 0.6) : 0;
@@ -159,20 +165,55 @@ export function buildMemoryBlock({
     };
 
     // ① 当前世界 · 当前存档（最相关，最多吃 60% 预算）
+    // 世界级记忆（存在 __world__ 通道里）先于存档记忆给出，但占用同一段预算
+    const CH = WORLDBOOK_CHANNEL;
+    const worldEntries = cur?.saves?.[CH]?.entries || [];
     const curSave = cur?.saves?.[sKey];
-    if (curSave && (curSave.entries || []).length) {
-        const head = `### 当前位置：${wLabel} / ${curSave.label}`;
-        const arr = curSave.entries;
-        const start = Math.max(0, arr.length - saveLimit);
+    if ((worldEntries.length || curSave?.entries?.length)) {
+        const head = curSave
+            ? `### 当前位置：${wLabel} / ${curSave.label}`
+            : `### 当前位置：${wLabel}`;
         const picked = [];
         const cap = Math.max(120, budget * 0.6);
         let secUsed = estimateTokens(head);
-        for (let i = arr.length - 1; i >= start; i--) {
-            const line = '- ' + arr[i].text;
+
+        const take = (line) => {
             const cost = estimateTokens(line);
-            if (secUsed + cost > cap) break;
-            picked.unshift(line);
+            if (secUsed + cost > cap) return false;
+            picked.push(line);
             secUsed += cost;
+            return true;
+        };
+
+        // 世界级：整个世界通用，换存档也成立 → 从旧到新全给
+        if (worldEntries.length) {
+            picked.push('（这个世界的常识，换哪一次都成立）');
+            secUsed += estimateTokens(picked[picked.length - 1]);
+            for (const e of worldEntries) {
+                if (!take('- ' + e.text)) break;
+            }
+        }
+        // 存档级：越新越相关 → 从新往回取
+        if (curSave?.entries?.length) {
+            const arr = curSave.entries;
+            const start = Math.max(0, arr.length - saveLimit);
+            const lines = [];
+            let rest = secUsed;
+            for (let i = arr.length - 1; i >= start; i--) {
+                const line = '- ' + arr[i].text;
+                const cost = estimateTokens(line);
+                if (rest + cost > cap) break;
+                lines.unshift(line);
+                rest += cost;
+            }
+            if (lines.length) {
+                if (worldEntries.length) {
+                    picked.push('（这一次发生的事）');
+                    secUsed += estimateTokens(picked[picked.length - 1]);
+                }
+                picked.push(...lines);
+                secUsed = rest;
+            }
         }
         if (picked.length) {
             out.push([head, ...picked].join('\n'));
@@ -183,7 +224,7 @@ export function buildMemoryBlock({
     // ② 同一个世界的其他存档
     if (cur && cur.saves) {
         for (const [k, s] of Object.entries(cur.saves)) {
-            if (k === sKey) continue;
+            if (k === sKey || k === CH) continue;   // 跳过当前存档与世界通道
             const lines = (s.entries || []).slice(-4).map((x) => '- ' + x.text);
             if (!pushBlock(`### ${wLabel} / ${s.label}（另外一次经历）`, lines)) break;
         }

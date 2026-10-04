@@ -13,6 +13,8 @@
  * 切换是哪个角色做陪伴者 → 在扩展设置页（和酒馆助手同位置）
  */
 
+import { WORLDBOOK_CHANNEL } from './inject.js';
+
 const DRAWER_ID = 'cmcc-top-drawer';
 const PANEL_ID = 'cmcc-top-panel';
 const LOG_TAG = '[CMCC]';
@@ -423,6 +425,45 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
     // 当前位置
     let cur = { wKey: '', sKey: '', wLabel: '' };
     try { cur = api.currentPos(); } catch (e) { /* ignore */ }
+
+    /**
+     * 渲染一组记忆条目（可编辑 / 删除）
+     * 抽成函数是因为「存档记忆」和「世界级记忆」要共用同一套交互。
+     */
+    function renderEntries(wKey, sKey, entries) {
+        const ul = el('div', 'cmcc-entries');
+        const SHOW = 30;
+        const start = Math.max(0, (entries || []).length - SHOW);
+        (entries || []).slice(start).forEach((e, i) => {
+            const idx = start + i;
+            const row = el('div', 'cmcc-entry');
+            const txt = el('span', 'cmcc-entry-text', e.text);
+            txt.title = '点击编辑';
+            txt.onclick = async () => {
+                const v = await ctx.callGenericPopup('修改这条记忆：', ctx.POPUP_TYPE.INPUT, e.text);
+                if (v != null && v !== '') {
+                    await api.editMemory(wKey, sKey, idx, v);
+                    renderTopPanel({ ctx, api, onGotoSettings });
+                }
+            };
+            row.appendChild(txt);
+            const x = el('button', 'cmcc-x', '×');
+            x.title = '删除这条';
+            x.onclick = async () => {
+                await api.deleteMemory(wKey, sKey, idx);
+                renderTopPanel({ ctx, api, onGotoSettings });
+            };
+            row.appendChild(x);
+            ul.appendChild(row);
+        });
+        if (!(entries || []).length) ul.appendChild(el('div', 'cmcc-empty', '（暂无）'));
+        if ((entries || []).length > SHOW) {
+            ul.appendChild(el('div', 'cmcc-more',
+                `… 还有 ${entries.length - SHOW} 条更早的（可用下面按钮到世界书里看）`));
+        }
+        return ul;
+    }
+
     memBox.appendChild(el('div', 'cmcc-now',
         `当前位置：<b>${cur.wLabel || '—'}</b>`));
 
@@ -443,6 +484,22 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
         wh.appendChild(wt);
         wh.appendChild(el('span', 'cmcc-meta', `${w.saveCount} 次 / ${w.count} 条`));
         card.appendChild(wh);
+
+        // ── 世界级记忆（整个世界通用，换存档也记得）──
+        // 它们存在 __world__ 通道里，不是一个「存档」，要单独展示，
+        // 否则用户既看不到也改不了（曾经的 bug）。
+        if (w.worldEntryCount) {
+            const wsd = el('div', 'cmcc-save cmcc-save-world');
+            const wsh = el('div', 'cmcc-save-head');
+            const wst = el('span', 'cmcc-save-title', '· 整个世界都成立');
+            wst.title = '换哪一次存档都记得的事（world 范围）';
+            wsh.appendChild(wst);
+            wsh.appendChild(el('span', 'cmcc-meta', `${w.worldEntryCount} 条`));
+            wsd.appendChild(wsh);
+            wsd.appendChild(renderEntries(w.key, WORLDBOOK_CHANNEL,
+                snap.worlds?.[w.key]?.saves?.[WORLDBOOK_CHANNEL]?.entries || []));
+            card.appendChild(wsd);
+        }
 
         for (const s of w.saves) {
             const sd = el('div', 'cmcc-save');
@@ -466,36 +523,7 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
             sd.appendChild(sh);
 
             const entries = snap.worlds?.[w.key]?.saves?.[s.key]?.entries || [];
-            const ul = el('div', 'cmcc-entries');
-            const SHOW = 30;
-            const start = Math.max(0, entries.length - SHOW);
-            entries.slice(start).forEach((e, i) => {
-                const idx = start + i;
-                const row = el('div', 'cmcc-entry');
-                const txt = el('span', 'cmcc-entry-text', e.text);
-                txt.title = '点击编辑';
-                txt.onclick = async () => {
-                    const v = await ctx.callGenericPopup('修改这条记忆：', ctx.POPUP_TYPE.INPUT, e.text);
-                    if (v != null && v !== '') {
-                        await api.editMemory(w.key, s.key, idx, v);
-                        renderTopPanel({ ctx, api, onGotoSettings });
-                    }
-                };
-                row.appendChild(txt);
-                const x = el('button', 'cmcc-x', '×');
-                x.onclick = async () => {
-                    await api.deleteMemory(w.key, s.key, idx);
-                    renderTopPanel({ ctx, api, onGotoSettings });
-                };
-                row.appendChild(x);
-                ul.appendChild(row);
-            });
-            if (!entries.length) ul.appendChild(el('div', 'cmcc-empty', '（暂无）'));
-            if (entries.length > SHOW) {
-                ul.appendChild(el('div', 'cmcc-more',
-                    `… 还有 ${entries.length - SHOW} 条更早的（可用下面按钮到世界书里看）`));
-            }
-            sd.appendChild(ul);
+            sd.appendChild(renderEntries(w.key, s.key, entries));
 
             const addRow = el('div', 'cmcc-add');
             const addBtn = el('button', 'menu_button cmcc-mini', '+ 加一条');
