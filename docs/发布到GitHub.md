@@ -33,6 +33,51 @@ iKuuu 外连         : 192.168.1.49 → 23.149.108.16:443   （有一条活跃�
 
 ---
 
+## 建仓库时要填的内容
+
+### Repository name
+
+```
+SillyTavern-CMCC
+```
+
+### Description（仓库描述，GitHub 限 350 字符内）
+
+**推荐这条**（77 字符）：
+
+```
+SillyTavern 扩展 | 一个固定的角色，跟着你玩任何卡：换角色卡、换存档，她都记得你们经历的一切。人设与记忆都内置，不占用你的角色卡库和世界书。
+```
+
+其他可选：
+
+| 用途 | 内容 |
+|---|---|
+| 短版（44 字符） | `SillyTavern 跨世界陪伴角色：一个固定的她，陪你玩任何卡，记得你们经历的一切。` |
+| 英文版（146 字符） | `A SillyTavern extension: one persistent companion who follows you into any character card and remembers everything you have been through together.` |
+
+### Topics（仓库页 About → 齿轮 → Topics，最多 20 个）
+
+```
+sillytavern
+sillytavern-extension
+ai-companion
+persistent-memory
+roleplay
+llm
+javascript
+worldbook
+memory
+tavern
+```
+
+### 其他选项
+
+- 选 **Public**
+- **不要**勾 Add a README file / .gitignore / license —— 我们都已经有了
+
+---
+
 ## 1. 你要做的（关键）
 
 打开 **iKuuuVPN**，然后做到这两点之一：

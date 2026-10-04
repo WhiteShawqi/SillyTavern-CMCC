@@ -1,12 +1,13 @@
 {
     "display_name": "跨世界陪伴角色 (CMCC)",
+    "description": "一个固定的角色，跟着你玩任何卡：换角色卡、换存档，她都记得你们经历的一切。人设与记忆都内置，不占用你的角色卡库和世界书。",
     "loading_order": 100,
     "requires": [],
     "optional": [],
     "js": "index.js",
     "css": "style.css",
     "author": "",
-    "version": "0.8.2",
+    "version": "0.8.3",
     "homePage": "",
     "auto_update": false
 }
