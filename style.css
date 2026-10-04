@@ -150,9 +150,10 @@
 }
 
 .cmcc-save {
-    margin: 6px 0 6px 8px;
+    position: relative;
+    margin: 4px 0 4px 12px;                       /* L2 缩进 */
     padding-left: 8px;
-    border-left: 1px dashed rgba(127 127 127 / 0.4);
+    border-left: 2px solid rgba(140 140 140 / 0.30);   /* L2 竖向连接线 */
 }
 
 .cmcc-save-head {
@@ -202,7 +203,7 @@
 
 .cmcc-x:hover { opacity: 1; color: #ff6b6b; }
 
-.cmcc-add { margin-top: 3px; }
+.cmcc-add { margin-top: 3px; margin-left: 17px; }   /* 跟 L3 缩进对齐 */
 
 .cmcc-mini {
     font-size: 0.86em;
@@ -518,18 +519,6 @@
     line-height: 1.6;
 }
 
-/* 世界级记忆区块（整个世界通用，不是一个「存档」） */
-.cmcc-save-world {
-    border-left: 2px solid rgba(217 164 65 / 0.6);
-    padding-left: 6px;
-    margin-bottom: 6px;
-}
-
-.cmcc-save-world .cmcc-save-title {
-    color: #d9a441;
-    font-style: italic;
-}
-
 /* 折叠箭头（世界 / 存档标题行） */
 .cmcc-chev {
     flex: 0 0 auto;
@@ -621,4 +610,154 @@
 .cmcc-danger-box {
     border-left: 3px solid rgba(220 80 80 / 0.5);
     background: rgba(220 80 80 / 0.06);
+}
+
+/* ══════════════════════════════════════════════
+   记忆树的三级层级
+     L1 = 世界        L2 = 存档 / 世界记忆        L3 = 一条记忆
+   目标：一眼看出谁属于谁。之前三级和二级混在一起（用户反馈）。
+   ══════════════════════════════════════════════ */
+
+/* ── 级别徽章 ── */
+.cmcc-lv {
+    flex: 0 0 auto;
+    font-size: 0.68em;
+    font-weight: bold;
+    letter-spacing: 0.03em;
+    padding: 1px 4px;
+    border-radius: 3px;
+    line-height: 1.4;
+    opacity: 0.9;
+}
+
+.cmcc-lv1 {
+    background: rgba(122 162 247 / 0.30);
+    border: 1px solid rgba(122 162 247 / 0.55);
+    color: #b9cdff;
+}
+
+.cmcc-lv2 {
+    background: rgba(160 160 160 / 0.22);
+    border: 1px solid rgba(160 160 160 / 0.40);
+    color: #cfcfcf;
+}
+
+.cmcc-lv3 {
+    background: transparent;
+    border: 1px solid rgba(140 140 140 / 0.28);
+    color: #9a9a9a;
+    font-size: 0.62em;
+    padding: 0 3px;
+}
+
+/* ── 级别名（世界 / 存档 / 世界记忆）── */
+.cmcc-lvname {
+    flex: 0 0 auto;
+    font-size: 0.74em;
+    opacity: 0.6;
+    white-space: nowrap;
+    margin-right: 2px;
+}
+
+/* ── 当前位置徽章 ── */
+.cmcc-curbadge {
+    flex: 0 0 auto;
+    font-size: 0.68em;
+    padding: 1px 5px;
+    border-radius: 999px;
+    background: rgba(122 162 247 / 0.22);
+    border: 1px solid rgba(122 162 247 / 0.5);
+    color: #b9cdff;
+    white-space: nowrap;
+}
+
+/* ── L1 世界：最重 ── */
+.cmcc-world-head {
+    background: rgba(122 162 247 / 0.13);
+    border-left: 3px solid rgba(122 162 247 / 0.75);
+    padding-left: 6px;
+    font-size: 1.02em;
+}
+
+.cmcc-world-title { font-weight: bold; }
+
+.cmcc-cur > .cmcc-world-head {
+    background: rgba(122 162 247 / 0.22);
+    border-left-color: #7aa2f7;
+}
+
+/* ── L2 区块：整体缩进，并画一条竖向连接线 ── */
+.cmcc-save,
+.cmcc-wmem,
+.cmcc-subhead {
+    margin-left: 12px;
+}
+
+.cmcc-save-head {
+    background: rgba(140 140 140 / 0.07);
+    border-radius: 3px;
+    padding-left: 4px;
+}
+
+.cmcc-save-title { font-weight: 500; }
+
+/* ── 世界记忆：不是存档，用暖色 + 斜体，明确区别 ── */
+.cmcc-wmem {
+    border-left-color: rgba(217 164 65 / 0.55) !important;
+}
+
+.cmcc-wmem > .cmcc-save-head {
+    background: rgba(217 164 65 / 0.10);
+}
+
+.cmcc-wmem .cmcc-save-title {
+    color: #d9a441;
+    font-style: italic;
+    font-weight: normal;
+    font-size: 0.9em;
+}
+
+/* ── 「存档」小标题：把世界记忆和各次存档隔开 ── */
+.cmcc-subhead-save {
+    font-size: 0.72em;
+    opacity: 0.5;
+    letter-spacing: 0.05em;
+    padding: 6px 0 2px 8px;
+    border-left: 2px solid rgba(140 140 140 / 0.18);
+    margin-bottom: 2px;
+    user-select: none;
+}
+
+/* ── L3 条目：再缩进一级 ── */
+.cmcc-entries {
+    margin-left: 10px;
+    padding-left: 7px;
+    border-left: 1px dashed rgba(140 140 140 / 0.22);
+}
+
+.cmcc-entry-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    line-height: 1.45;
+}
+
+/* 收起后的小标题也不该有连接线残留 */
+.cmcc-save:last-child { margin-bottom: 0; }
+
+/* 「加一条」也跟着 L3 缩进 */
+
+/* 未设好陪伴者时的引导块 */
+.cmcc-empty-state {
+    border-left: 3px solid rgba(122 162 247 / 0.5);
+    background: rgba(122 162 247 / 0.08);
+    line-height: 1.7;
+    padding: 8px 10px;
+    border-radius: 4px;
+}
+
+/* 设置页：内置人设编辑区 */
+.cmcc-builtin {
+    margin: 6px 0 2px 0;
+    padding: 6px 0 0 0;
+    border-top: 1px dashed rgba(127 127 127 / 0.25);
 }

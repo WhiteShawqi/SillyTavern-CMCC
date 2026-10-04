@@ -559,6 +559,7 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
         (entries || []).slice(start).forEach((e, i) => {
             const idx = start + i;
             const row = el('div', 'cmcc-entry');
+            row.appendChild(el('span', 'cmcc-lv cmcc-lv3', 'L3'));
 
             if (SELECT_MODE) {
                 // ── 多选模式：显示勾选框，点整行即勾选 ──
@@ -644,8 +645,11 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
         const wh = el('div', 'cmcc-world-head');
         const wchev = el('span', 'cmcc-chev', wCollapsed ? '▸' : '▾');
         wh.appendChild(wchev);
+        // L1 = 世界
+        wh.appendChild(el('span', 'cmcc-lv cmcc-lv1', 'L1'));
+        wh.appendChild(el('span', 'cmcc-lvname', '世界'));
         const wt = el('span', 'cmcc-world-title',
-            (w.key === cur.wKey ? '▶ ' : '') + w.label);
+            (w.key === cur.wKey ? '● ' : '') + w.label);
         wt.title = '点击改名';
         wt.onclick = async (ev) => {
             ev.stopPropagation();
@@ -656,6 +660,8 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
         // 一个「存档」= 一个聊天记录（不是一次生成）；「条」= 一条记忆
         wh.appendChild(el('span', 'cmcc-meta',
             `${w.saveCount} 个存档 · ${w.count} 条记忆`));
+        wh.appendChild(el('span', 'cmcc-curbadge',
+            w.key === cur.wKey ? '当前位置' : ''));
         // 点标题行任意处折叠/展开
         wh.onclick = () => { toggleCollapsed(wKeyId); renderTopPanel({ ctx, api, onGotoSettings }); };
         wh.title = '点击展开 / 收起';
@@ -666,18 +672,21 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
             continue;
         }
 
-        // ── 世界级记忆（整个世界通用，换存档也记得）──
-        // 它们存在 __world__ 通道里，不是一个「存档」，要单独展示，
-        // 否则用户既看不到也改不了（曾经的 bug）。
+        // ── 世界级记忆 ──
+        // ⚠ 它不是「存档」，是**世界本身的属性**（换哪次都成立）。
+        //   所以用 L2 的浅色副行样式，而不是和存档一样的方块 ——
+        //   之前做成方块，看起来像第 N 个存档，三级和二级就混了。
         if (w.worldEntryCount) {
             const wKeyId2 = 's:' + w.key + '|' + WORLDBOOK_CHANNEL;
-            const wsd = el('div', 'cmcc-save cmcc-save-world');
+            const wsd = el('div', 'cmcc-save cmcc-wmem');
             const wsh = el('div', 'cmcc-save-head');
             wsh.appendChild(el('span', 'cmcc-chev', COLLAPSED.has(wKeyId2) ? '▸' : '▾'));
-            const wst = el('span', 'cmcc-save-title', '· 整个世界都成立');
-            wst.title = '换哪一次存档都记得的事（world 范围）';
+            wsh.appendChild(el('span', 'cmcc-lv cmcc-lv2', 'L2'));
+            wsh.appendChild(el('span', 'cmcc-lvname', '世界记忆'));
+            const wst = el('span', 'cmcc-save-title', '（不属于某次存档，换哪次都成立）');
+            wst.title = 'world 范围：切换存档后仍然记得';
             wsh.appendChild(wst);
-            wsh.appendChild(el('span', 'cmcc-meta', `${w.worldEntryCount} 条记忆`));
+            wsh.appendChild(el('span', 'cmcc-meta', `${w.worldEntryCount} 条`));
             wsh.onclick = () => { toggleCollapsed(wKeyId2); renderTopPanel({ ctx, api, onGotoSettings }); };
             wsh.title = '点击展开 / 收起';
             wsd.appendChild(wsh);
@@ -689,12 +698,19 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
             card.appendChild(wsd);
         }
 
+        // 存档小标题 —— 把「世界记忆」和「各次存档」明确隔开
+        if (w.saves.length) {
+            card.appendChild(el('div', 'cmcc-subhead cmcc-subhead-save', '存档（每次聊天一个）'));
+        }
+
         for (const s of w.saves) {
             const sKeyId = 's:' + w.key + '|' + s.key;
             const sCollapsed = COLLAPSED.has(sKeyId);
             const sd = el('div', 'cmcc-save');
             const sh = el('div', 'cmcc-save-head');
             sh.appendChild(el('span', 'cmcc-chev', sCollapsed ? '▸' : '▾'));
+            sh.appendChild(el('span', 'cmcc-lv cmcc-lv2', 'L2'));
+            sh.appendChild(el('span', 'cmcc-lvname', '存档'));
             const st = el('span', 'cmcc-save-title', s.label);
             st.title = '点击改名';
             st.onclick = async (ev) => {
@@ -704,8 +720,11 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
             };
             sh.appendChild(st);
             sh.appendChild(el('span', 'cmcc-meta', `${s.count} 条记忆`));
+            if (s.key === cur.sKey && w.key === cur.wKey) {
+                sh.appendChild(el('span', 'cmcc-curbadge', '当前位置'));
+            }
             const del = el('button', 'cmcc-x', '×');
-            del.title = '删除这次经历的全部记忆';
+            del.title = '删除这个存档的全部记忆';
             del.onclick = async (ev) => {
                 ev.stopPropagation();
                 const ok = await ctx.callGenericPopup(
