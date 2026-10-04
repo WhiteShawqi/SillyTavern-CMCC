@@ -194,6 +194,13 @@ function measure() {
         okDisplay: cs.display === 'block',
         okPosition: cs.position === 'absolute',
         openState: isTopPanelOpen(),
+        // 诊断：宽度到底是谁定的
+        sheldWidth: getComputedStyle(document.documentElement).getPropertyValue('--sheldWidth').trim(),
+        panelCssWidth: cs.width,
+        panelCssMinWidth: cs.minWidth,
+        panelCssMaxWidth: cs.maxWidth,
+        panelCssLeft: cs.left,
+        panelCssRight: cs.right,
     };
 }
 
