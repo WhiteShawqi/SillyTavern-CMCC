@@ -1,10 +1,11 @@
 @echo off
 chcp 65001 >nul
-title 还原 hosts（撤销 GitHub 直连修改）
+title Restore hosts
 
+:: Auto-elevate to administrator
 net session >nul 2>&1
 if %errorLevel% neq 0 (
-    echo 需要管理员权限，正在请求提权...
+    echo Requesting administrator privileges...
     powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
     exit /b
 )

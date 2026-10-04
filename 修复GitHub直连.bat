@@ -1,11 +1,11 @@
 @echo off
 chcp 65001 >nul
-title 修复 GitHub 直连（需要管理员权限）
+title Fix GitHub Direct Connection
 
-:: 自动提权
+:: Auto-elevate to administrator
 net session >nul 2>&1
 if %errorLevel% neq 0 (
-    echo 需要管理员权限，正在请求提权...
+    echo Requesting administrator privileges...
     powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
     exit /b
 )
