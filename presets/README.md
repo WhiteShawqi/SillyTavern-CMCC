@@ -48,8 +48,11 @@
 
 ### 外貌（看图写的，不是凭印象）
 
-外貌是客观的，写错就是错。所以这一段是**打开官方立绘看图写的**，
-图存在 [`reference/`](reference/)，逐句对照表也在那里。
+外貌是客观的，写错就是错。所以这一段是**打开官方立绘看图写的**。
+
+> 图不在 main 分支（省体积）。想看：
+> - 官方立绘：<https://prts.wiki/w/文件:立绘_荒芜拉普兰德_1.png>
+> - 逐句对照表：[dev 分支的 presets/reference/](https://github.com/WhiteShawqi/SillyTavern-CMCC/tree/dev/presets/reference)
 
 | 人设里写的 | 依据 |
 |---|---|
@@ -147,7 +150,7 @@
 可查的地方：
 - 文字：[PRTS 明日方舟中文 Wiki](https://prts.wiki/)（`action=raw` 可以拿原始 wikitext）
 - 外貌：**去看立绘**。文字资料里通常没有外貌描述，硬写就是编。
-  拿图的方法见 [`reference/README.md`](reference/README.md)。
+  拿图的方法见 [dev 分支的 presets/reference/](https://github.com/WhiteShawqi/SillyTavern-CMCC/tree/dev/presets/reference)。
 
 > `build-lappland.mjs` 里有段**自检代码**，会拒绝生成包含错误设定的文件 ——
 > 就是为了防止这种翻车再发生。

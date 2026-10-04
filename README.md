@@ -156,20 +156,22 @@ git clone https://github.com/WhiteShawqi/SillyTavern-CMCC.git
 ```
 extensions/
 └── SillyTavern-CMCC/
-    ├── manifest.json
-    ├── index.js
+    ├── manifest.json     ST 读这个识别扩展
+    ├── index.js          入口
     ├── style.css
     ├── LICENSE
-    ├── src/
-    │   ├── state.js      设置 + 内置人设列表 + 记忆模型（纯逻辑）
+    ├── README.md
+    ├── src/              插件自己的模块（9 个文件，约 200 KB）
+    │   ├── state.js      设置 + 内置人设列表 + 记忆模型
     │   ├── store.js      记忆 ↔ 世界书 读写与序列化
     │   ├── inject.js     动态引导 + 相关记忆检索 + 注入
     │   ├── memo.js       MVU 式记忆块解析
+    │   ├── portable.js   导出/导入的纯逻辑
     │   ├── summary.js    读预设自带摘要的能力（当前不接入）
     │   ├── topbar.js     酒馆顶部入口（改人设 / 记忆树 / 多选）
     │   └── ui.js         扩展到设置页（人设预设 / 导出导入 / 参数）
-    ├── tools/            开发工具（无头浏览器）
-    └── tests/            测试
+    ├── presets/          可直接导入的角色预设
+    └── docs/             安装说明
 ```
 
 装好后刷新 SillyTavern 页面。
@@ -463,37 +465,53 @@ body: JSON.stringify(generate_data)
 
 ---
 
-## 开发
+## 仓库结构
+
+**`main` 分支只放插件本体** —— 克隆/下载下来就能直接装，没有多余东西。
+
+```
+SillyTavern-CMCC/
+├── manifest.json          ST 读这个识别扩展
+├── index.js               入口
+├── style.css
+├── src/                   插件自己的模块
+│   ├── state.js           设置 + 内置人设列表 + 记忆模型
+│   ├── store.js           世界书读写、Markdown 序列化
+│   ├── inject.js          动态引导组装、相关记忆检索、注入
+│   ├── memo.js            解析 AI 输出的记忆块
+│   ├── portable.js        导出/导入的纯逻辑
+│   ├── summary.js         读预设自带摘要的能力（当前不接入）
+│   ├── topbar.js          酒馆顶部入口
+│   └── ui.js              设置面板
+├── presets/               可直接导入的角色预设
+└── docs/                  安装说明
+```
+
+运行时**只需要上面这些**（9 个代码文件，约 200 KB）。
+
+### 开发相关的东西在 `dev` 分支
+
+测试、开发工具、排查笔记都在 [`dev` 分支](https://github.com/WhiteShawqi/SillyTavern-CMCC/tree/dev)：
+
+| 目录 | 是什么 |
+|---|---|
+| `tests/` | Node 测试（假 DOM）+ 浏览器验证页 |
+| `tools/` | 无头浏览器命令行（`shot.mjs`）、GitHub 连接排查脚本 |
+| `docs/` | 发布流程、诊断脚本等排查记录 |
 
 ```bash
+git clone -b dev https://github.com/WhiteShawqi/SillyTavern-CMCC.git
+cd SillyTavern-CMCC
+
 # Node 测试（假 DOM，不执行 CSS）
-cd tests
-node test_core.mjs        # 286 项
-node _inject_e2e.mjs      #  38 项  端到端注入
-node _cascade_test.mjs    #  32 项  三级级联勾选
-node _persona_test.mjs    #  35 项  多人设 + 迁移
-node _panel_smoke.mjs     #  13 项  面板渲染
-node _click_test.mjs      #   8 项  抽屉交互
-node _topbar_test.mjs     #   2 项  顶部面板渲染
+cd tests && node test_core.mjs
 
 # 真浏览器验证（真实布局 + 真实 CSS）—— 涉及样式改动必跑
 node tests/layout/run.mjs
-node tests/layout/run.mjs --png     # 顺便存截图
 ```
 
-合计 **414 项**（Node）+ 浏览器双页验证。
-详见 [`tests/README.md`](tests/README.md) 与 [`tests/layout/README.md`](tests/layout/README.md)。
-
-### 工具
-
-```bash
-node tools/shot.mjs <网址> --png out.png    # 无头浏览器截图
-node tools/shot.mjs <网址> --title          # 取页面回传的断言结果
-```
-
-关于「为什么不用 PowerShell 调浏览器」——
-见 [`tools/README.md`](tools/README.md)（Edge 正在运行时会转交命令，
-PowerShell 又读不到它的 stdout，两个坑都踩过）。
+> 为什么分开：这些是**开发时才需要的**。普通用户 clone 下来只要装进酒馆，
+> 不需要 40 多个测试文件。需要的人切 `dev` 分支就有。
 
 ### 模块职责
 
@@ -504,6 +522,7 @@ PowerShell 又读不到它的 stdout，两个坑都踩过）。
 | `src/store.js` | 世界书读写、条目模板、Markdown 序列化 ↔ 反序列化 |
 | `src/inject.js` | 动态引导组装（含 token 预算）、相关记忆检索、请求体注入 |
 | `src/memo.js` | 解析 AI 输出的记忆块（纯文本 / JSON / 旧格式） |
+| `src/portable.js` | 导出/导入的纯逻辑（可单测） |
 | `src/summary.js` | 读预设自带 `<summary>` 摘要的能力（当前不接入记忆流程） |
 | `src/ui.js` | 设置面板（人设预设 / 导出导入 / 参数 / 记忆总览） |
 | `src/topbar.js` | 酒馆顶部入口：人设编辑 + 记忆树 + 多选级联 |
@@ -548,6 +567,8 @@ PowerShell 又读不到它的 stdout，两个坑都踩过）。
 
 ## 发布到 GitHub
 
-双击 [`push-to-github.bat`](push-to-github.bat) 即可（git 已装好、仓库已初始化）。
+发布流程与连接排查的记录在 `dev` 分支的 `docs/` 里
+（牵连到本机网络环境，不适合放在插件本体里）。
 
-详细步骤与排错见 [`docs/发布到GitHub.md`](docs/发布到GitHub.md)。
+---
+
