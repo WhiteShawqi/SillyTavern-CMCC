@@ -969,7 +969,7 @@ jQuery(async () => {
         // 注册重渲染钩子，供"打开面板时自愈"使用
         setRenderHook(() => api.refreshTop());
         mountTopDrawer();
-        refreshTop();
+        api.refreshTop();
     } catch (e) { warn('顶部入口挂载失败', e); }
 
     // ST 有时会在扩展加载后重建 / 异步补完 DOM（例如角色列表就绪时），
@@ -984,7 +984,7 @@ jQuery(async () => {
             const b = document.getElementById('cmcc-top-panel_body');
             if (b && b.children.length === 0) {
                 warn('面板为空，补渲染');
-                refreshTop();
+                api.refreshTop();
             }
         } catch (e) { warn('补挂失败', e); }
     }, 1500);
@@ -994,7 +994,7 @@ jQuery(async () => {
         settings, onSave, ctx: ctx(), api,
         onOpenTop: () => {
             openTopPanel();
-            refreshTop();
+            api.refreshTop();
         },
     });
 
@@ -1017,14 +1017,14 @@ jQuery(async () => {
         eventSource.on(event_types.CHAT_CHANGED, async () => {
             try { await syncPosition(currentPos()); } catch (e) { /* ignore */ }
             panel?.refresh();
-            refreshTop();
+            api.refreshTop();
         });
     }
     if (event_types.GROUP_UPDATED) {
         eventSource.on(event_types.GROUP_UPDATED, async () => {
             try { await syncPosition(currentPos()); } catch (e) { /* ignore */ }
             panel?.refresh();
-            refreshTop();
+            api.refreshTop();
         });
     }
 
@@ -1045,7 +1045,7 @@ jQuery(async () => {
             lastGroup = g;
             syncPosition(currentPos()).then(() => {
                 panel?.refresh();
-                refreshTop();
+                api.refreshTop();
             }).catch(() => {});
         } catch (e) { /* ignore */ }
     }, 1000);
@@ -1068,7 +1068,7 @@ jQuery(async () => {
             if (moved || movedD || r.saves || r.worlds) {
                 await saveToBook(book);
                 panel?.refresh();
-                refreshTop();
+                api.refreshTop();
             }
         } catch (e) { warn('启动收尾失败', e); }
     }, 2000);

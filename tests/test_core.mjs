@@ -718,5 +718,71 @@ chk(sp.includes('本次记忆'), '格式说明含 summary 标题');
 chk(sp.includes('不要写范围'), '★ 格式说明明确不用写范围');
 console.log('');
 
+
+// ── 22. 静态检查：index.js 里的裸函数调用必须有定义 ──
+// 真实事故：index.js 调了裸的 refreshTop()，但它其实是 api 的方法
+//   → ReferenceError，把整个启动补挂块炸掉，表现为「设置面板点不开」。
+//   语法检查抓不到，单元测试跑不到，只有启动时炸，极难定位。
+//
+// 只查 index.js、只查"动词式命名"的裸调用，配一份明确的外部名字白名单。
+// 刻意保守：宁可漏报，也不要一堆误报（一直红的检查等于没有）。
+console.log('【22】静态检查：index.js 裸函数调用');
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+const __dir22 = dirname(fileURLToPath(import.meta.url));
+
+const code22 = readFileSync(join(__dir22, '..', 'index.js'), 'utf8');
+
+// 本文件里定义的名字
+const defs22 = new Set();
+for (const re of [
+    /(?:^|\n)\s*(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/g,
+    /(?:^|\n)\s*(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=/g,
+]) {
+    let m;
+    while ((m = re.exec(code22)) !== null) defs22.add(m[1]);
+}
+// import { … }
+{
+    const imp = /import\s*\{([^}]*)\}\s*from/g;
+    let m;
+    while ((m = imp.exec(code22)) !== null) {
+        m[1].split(',').forEach((x) => {
+            const n = x.trim().split(/\s+as\s+/).pop().trim();
+            if (n) defs22.add(n);
+        });
+    }
+}
+// 允许的外部名字（JS 内置 + ST 全局 + 我们已知的外部 API）
+const OK22 = new Set([
+    'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'requestAnimationFrame',
+    'parseInt', 'parseFloat', 'isNaN', 'isFinite', 'encodeURIComponent', 'decodeURIComponent',
+    'getComputedStyle', 'structuredClone', 'queueMicrotask', 'fetch', 'alert', 'confirm',
+    'getContext', 'loadWorldInfo', 'saveWorldInfo', 'updateWorldInfoList',
+    'createNewWorldInfo', 'getWorldInfoPrompt', 'generateQuietPrompt', 'generateRaw',
+    'if', 'for', 'while', 'switch', 'catch', 'return', 'typeof', 'function', 'new',
+    'delete', 'void', 'instanceof', 'await', 'async', 'super', 'constructor',
+]);
+
+// 只认「动词式」命名（正是 refreshTop 那类，也是模块内函数互相调用的常见形态）
+const VERBY = /^(?:refresh|render|update|sync|load|save|write|read|build|make|apply|init|handle|notify|purge|migrate|emit|toggle)[A-Z_$\w$]*$/;
+const bad22 = new Set();
+{
+    const re = /(?<![.\w$'"`])([a-zA-Z_$][\w$]*)\s*\(/g;
+    let m;
+    while ((m = re.exec(code22)) !== null) {
+        const n = m[1];
+        if (defs22.has(n) || OK22.has(n)) continue;
+        if (!VERBY.test(n)) continue;
+        // 方法定义形态 `name() {` 跳过
+        const after = code22.slice(m.index, m.index + 60);
+        if (/^[A-Za-z_$][\w$]*\s*\(\s*\)\s*\{/.test(after) && after.includes('{')) continue;
+        bad22.add(n);
+    }
+}
+chk(bad22.size === 0,
+    '★ index.js 里动词式裸调用都有定义' + (bad22.size ? ` → 可疑: ${[...bad22].join(', ')}` : ''));
+console.log('');
 console.log(fail === 0 ? `✓ 全部通过 (${pass} 项)` : `❌ 失败 ${fail} 项 / 共 ${pass + fail} 项`);
 process.exit(fail ? 1 : 0);
