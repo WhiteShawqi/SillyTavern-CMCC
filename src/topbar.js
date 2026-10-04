@@ -148,7 +148,8 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
 
     // ── 人设（可直接改，改的是卡本身）──
     const personaBox = el('div', 'cmcc-top-section');
-    const ph = el('div', 'cmcc-top-sec-head', '<b>人设</b>');
+    const ph = el('div', 'cmcc-top-sec-head');
+    ph.innerHTML = '<b>人设</b>';
     const reloadP = el('button', 'cmcc-x', '⟳');
     reloadP.title = '刷新';
     reloadP.onclick = () => renderTopPanel({ ctx, api, onGotoSettings });
@@ -184,12 +185,12 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
 
     // ── 记忆 ──
     const memBox = el('div', 'cmcc-top-section');
-    const mh = el('div', 'cmcc-top-sec-head',
-        `<b>记忆</b><span class="cmcc-meta">${snap.stats.worldCount} 个世界 / ${snap.stats.totalEntries} 条</span>`);
+    const mh = el('div', 'cmcc-top-sec-head');
+    mh.innerHTML = `<b>记忆</b><span class="cmcc-meta">${snap.stats.worldCount} 个世界 / ${snap.stats.totalEntries} 条</span>`;
     const reloadM = el('button', 'cmcc-x', '⟳');
+    mh.appendChild(reloadM);
     reloadM.title = '从世界书重新载入';
     reloadM.onclick = async () => { await api.reload(); renderTopPanel({ ctx, api, onGotoSettings }); };
-    mh.appendChild(reloadM);
     memBox.appendChild(mh);
 
     // 当前位置

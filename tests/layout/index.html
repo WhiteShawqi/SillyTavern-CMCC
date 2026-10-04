@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>CMCC 顶部面板布局验证</title>
+
+<!-- ══════════════════════════════════════════════════════════════
+     这里刻意**最小复刻** ST 的关键规则（不是完整 style.css）：
+       · #top-settings-holder  display:flex + width:var(--sheldWidth)
+       · .drawer                display:flex + width:100%
+       · .drawer-content        display:none / position:absolute / top:var(--topBarBlockSize)
+       · .drawer-content.openDrawer  display:block
+     目的：验证 CMCC 的 CSS 是否会覆盖这两条关键属性。
+     若 CMCC 覆盖了 display/position，面板就会被压进 flex 流 → 竖排。
+     ══════════════════════════════════════════════════════════════ -->
+<style>
+:root {
+    --sheldWidth: 50vw;
+    --topBarBlockSize: 42px;
+    --SmartThemeBlurTintColor: rgba(20, 22, 26, 0.92);
+    --SmartThemeBodyColor: #e6e6e6;
+    --SmartThemeBorderColor: #4a4f57;
+    --animation-duration: 0.2s;
+    --animation-duration-2x: 0.4s;
+}
+body {
+    margin: 0;
+    background: #0d0f12;
+    color: #e6e6e6;
+    font-family: 'Microsoft YaHei', sans-serif;
+    font-size: 15px;
+}
+
+/* ── 关键复刻①：顶部图标栏是 flex，总宽固定 ── */
+#top-settings-holder {
+    display: flex;
+    margin: 0 auto;
+    height: var(--topBarBlockSize);
+    justify-content: center;
+    z-index: 3005;
+    position: relative;
+    width: var(--sheldWidth);
+    background: #171a1f;
+}
+
+/* ── 关键复刻②：.drawer 是 width:100% 的 flex 项目 ── */
+.drawer {
+    align-items: center;
+    justify-content: center;
+    display: flex;
+    flex-flow: row;
+    width: 100%;
+}
+
+.drawer-toggle { cursor: pointer; }
+
+.drawer-icon {
+    padding: 10px 12px;
+    opacity: 0.55;
+    font-size: 17px;
+}
+.drawer-icon.openIcon { opacity: 1; color: #7aa2f7; }
+
+/* ── 关键复刻③：这才是决定"会不会被压扁"的地方 ── */
+.drawer-content {
+    background-color: var(--SmartThemeBlurTintColor);
+    color: var(--SmartThemeBodyColor);
+    border-radius: 10px;
+    padding: 5px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    min-width: 450px;
+    width: var(--sheldWidth);
+    overflow-y: hidden;
+    max-height: calc(100vh - var(--topBarBlockSize));
+    display: none;                 /* ← 关闭时完全不占位 */
+    position: absolute;            /* ← 脱离 flex 流，所以不会被压扁 */
+    top: var(--topBarBlockSize);
+    left: 0;
+    right: 0;
+    margin: 0 auto;
+    height: 0;
+}
+
+.drawer-content.openDrawer {
+    display: block;
+    height: auto;
+    overflow-y: auto;
+}
+</style>
+
+<!-- ══ CMCC 自己的样式（被测对象）══ -->
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+
+<!-- 复刻顶部图标栏结构 -->
+<div id="top-settings-holder">
+    <div class="drawer">
+        <div class="drawer-toggle"><div class="drawer-icon">⚙</div></div>
+    </div>
+    <div class="drawer">
+        <div class="drawer-toggle"><div class="drawer-icon">📖</div></div>
+    </div>
+    <!-- CMCC 会插到这里 -->
+</div>
+
+<script type="module">
+import { mountTopDrawer, openTopPanel, renderTopPanel, isTopPanelOpen } from './topbar.js';
+
+// ── 造一份假数据，走真实的 renderTopPanel ──
+const fakeCtx = {
+    characters: [
+        { name: '阿米娅', avatar: 'amiya.png', data: {
+            description: '罗德岛的领袖，卡特斯族。沉稳、温柔、有责任感。',
+            personality: '沉稳、温柔，面对困境也不轻言放弃。',
+            scenario: '她一直跟着 {user} 穿越各个世界。',
+            first_mes: '',
+        } },
+    ],
+    callGenericPopup: async () => null,
+    toastr: { info: () => {}, success: () => {}, warning: () => {}, error: () => {} },
+    openWorldInfoEditor: () => {},
+};
+
+const fakeApi = {
+    snapshot: () => ({
+        bookName: 'CMCC-记忆库',
+        companionAvatar: 'amiya.png',
+        shared: [],
+        stats: {
+            worldCount: 3, totalEntries: 142,
+            worlds: [
+                { key: 'char:gfb.png', label: '全球冰封 v3.1.3', saveCount: 2, count: 88,
+                  saves: [
+                      { key: 's1', label: '存档1', count: 45 },
+                      { key: 's2', label: '存档2', count: 43 },
+                  ] },
+                { key: 'char:mz.png', label: '漫综：世界观', saveCount: 1, count: 54,
+                  saves: [{ key: 's1', label: '存档1', count: 54 }] },
+            ],
+        },
+        worlds: {
+            'char:gfb.png': { saves: { s1: { entries: [
+                { text: '在避难所里冻了一夜' },
+                { text: '找到一箱罐头' },
+                { text: '和阿米娅一起守了半夜的火堆' },
+            ] }, s2: { entries: [{ text: '这次直接进了地堡' }] } } },
+            'char:mz.png': { saves: { s1: { entries: [{ text: '进了万魔殿' }] } } },
+        },
+    }),
+    currentPos: () => ({ wKey: 'char:gfb.png', sKey: 's1', wLabel: '全球冰封 v3.1.3' }),
+    summarize: () => {},
+    reload: async () => {},
+    editPersona: async () => {},
+    renameWorld: async () => {},
+    renameSave: async () => {},
+    deleteSave: async () => {},
+    editMemory: async () => {},
+    deleteMemory: async () => {},
+    addMemory: async () => {},
+};
+
+mountTopDrawer();
+renderTopPanel({ ctx: fakeCtx, api: fakeApi, onGotoSettings: () => {} });
+openTopPanel();
+
+// ── 强制同步布局后立刻测量，并写进 document.title 与 body ──
+// （不用 window.load，避免 --dump-dom 拿到执行前的快照）
+function measure() {
+    const panel = document.getElementById('cmcc-top-panel');
+    if (!panel) return { error: 'panel 不存在' };
+    const cs = getComputedStyle(panel);
+    const host = document.getElementById('top-settings-holder');
+    const head = panel.querySelector('.cmcc-top-head');
+    const pr = panel.getBoundingClientRect();
+    const hr = head.getBoundingClientRect();
+    const ho = host.getBoundingClientRect();
+
+    return {
+        panelDisplay: cs.display,
+        panelPosition: cs.position,
+        panelWidth: Math.round(pr.width),
+        panelHeight: Math.round(pr.height),
+        headWidth: Math.round(hr.width),
+        headHeight: Math.round(hr.height),
+        hostWidth: Math.round(ho.width),
+        hostHeight: Math.round(ho.height),
+        iconCount: host.querySelectorAll('.drawer-icon').length,
+        // ★ 核心判据 1：标题栏应是一行（正常 ~30px；竖排会几百 px）
+        headIsSingleLine: hr.height > 0 && hr.height < 60,
+        // ★ 核心判据 2：面板脱离文档流 → host 高度不被撑大
+        hostNotStretched: ho.height <= 50,
+        // ★ 核心判据 3：显示层确实是 block + absolute（没被 CMCC 覆盖）
+        okDisplay: cs.display === 'block',
+        okPosition: cs.position === 'absolute',
+        openState: isTopPanelOpen(),
+    };
+}
+
+// 触发一次同步布局
+void document.body.offsetHeight;
+const RESULT = measure();
+const txt = 'CMCC_RESULT=' + JSON.stringify(RESULT);
+document.title = txt;
+// 结果只写进 <title>（--dump-dom 能读到），不插进 body —— 避免挡住面板影响截图
+console.log(txt);
+
+</script>
+</body>
+</html>

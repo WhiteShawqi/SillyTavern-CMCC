@@ -242,7 +242,13 @@
 }
 
 #cmcc-top-panel {
-    /* 不覆盖 display / position / top —— 由 ST 的 .drawer-content 负责 */
+    /* 不覆盖 display / position / top —— 由 ST 的 .drawer-content 负责。
+       但 ST 还设了 left:0;right:0（配合 margin:auto 居中），会把宽度锁到 --sheldWidth，
+       所以这里把左右约束解开，改用 width + margin 自己居中。 */
+    left: auto;
+    right: auto;
+    margin-left: auto;
+    margin-right: auto;
     min-width: 380px;
     width: min(560px, 92vw);
     max-width: 92vw;
@@ -327,11 +333,34 @@
 .cmcc-top-sec-head {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
     margin-bottom: 6px;
 }
 
-.cmcc-top-sec-head b { flex: 0 0 auto; white-space: nowrap; }
+.cmcc-top-sec-head b {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+/* 统计文字与标题之间的间距 */
+.cmcc-top-sec-head .cmcc-meta {
+    margin-left: 2px;
+    white-space: nowrap;
+}
+
+/* 世界标题与"N 次 / N 条"之间的间距 */
+.cmcc-top-body .cmcc-world-head {
+    gap: 10px;
+}
+
+.cmcc-top-body .cmcc-meta {
+    margin-left: 2px;
+}
+
+/* 存档标题与条数之间 */
+.cmcc-top-body .cmcc-save-head {
+    gap: 10px;
+}
 
 .cmcc-field {
     display: flex;
