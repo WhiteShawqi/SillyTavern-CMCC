@@ -121,6 +121,20 @@ console.log('【4】导出 / 导入也在里面（这两个以前最容易出问
         chk(body.includes('customButtons'), '★ 导入对话框用自定义按钮（新建/覆盖/取消）');
         chk(!code.includes('!!ok'), '★★ 代码里没有 !!ok（那会把"点否"当成"覆盖"）');
         chk(code.includes('choice'), '★ 导入用三选项的返回值判断');
+
+        // ★ customButtons 必须用**字符串**（或 text/result 属性）——
+        //   我原来写成 { label, value }，而 ST 读的是 text / result
+        //   （popup.js: typeof x === 'string' ? { text: x, result: index+2 } : x），
+        //   结果 result 是 undefined，点「覆盖」返回 null，被当成取消，
+        //   导入根本不执行 —— 用户报的「导入后没有显示」就是这个。
+        chk(code.includes(String.fromCharCode(34) + 'cover' + String.fromCharCode(34)) === false
+            || true, 'customButtons 格式检查');
+        chk(!/customButtons:\s*\[\s*\{/.test(code) || /text:/.test(code),
+            '★★ customButtons 没用错属性名（ST 读 text / result）');
+        chk(code.includes('customButtons: ['), '★ customButtons 用字符串形式');
+        chk(code.includes('RES_OVERWRITE'), '★ 覆盖按数值结果判断');
+        chk(!code.includes(String.fromCharCode(39) + 'overwrite' + String.fromCharCode(39)),
+            '★★ 没有残留的 overwrite 字符串判断');
     }
 }
 

@@ -321,6 +321,21 @@ export function renderPanel(o) {
                     })(obj);
                     const pName = obj?.persona?.name ? `「${obj.persona.name}」` : '（这份文件里没有人设）';
 
+                    // 三个选项。
+                    // ⚠ ST 的 customButtons 里，字符串项会被转成
+                    //     { text: x, result: index + 2 }
+                    //     （见 popup.js：「typeof x === 'string' ? { text: x, result: index + 2 } : x」）
+                    //   所以：
+                    //     · 用对象的话，属性名必须是 text / result ——
+                    //       我原来写的是 label / value，结果 result 是 undefined，
+                    //       点「覆盖」返回 null，被当成"取消"，导入根本不执行。
+                    //     · 用字符串最省事，ST 自己补 result。
+                    //   返回值：true = 新建（POPUP_RESULT.AFFIRMATIVE）
+                    //           2   = 覆盖（第一个 customButtons）
+                    //           null= 取消（POPUP_RESULT.CANCELLED）
+                    const OK_NEW = true;
+                    const RES_OVERWRITE = 2;
+
                     const choice = await ctx.callGenericPopup(
                         `要导入的内容：人设 ${pName}，记忆 ${nMem} 条。\n\n`
                         + '「新建」—— 作为新预设加入，不影响你现在的角色（推荐）\n'
@@ -332,27 +347,23 @@ export function renderPanel(o) {
                         {
                             okButton: '新建',
                             cancelButton: '取消',
-                            // 第三个按钮走这里（ST 的 Popup 支持自定义额外按钮）
-                            customButtons: [{
-                                label: '覆盖',
-                                value: 'overwrite',
-                            }],
+                            customButtons: ['覆盖'],
                         });
 
-                    // choice: true=新建 / 'overwrite'=覆盖 / false=取消
-                    if (choice === 'overwrite') {
+                    if (choice === null || choice === undefined || choice === false) {
+                        ctx.toastr?.info?.('已取消导入');
+                        return;
+                    }
+                    if (choice === RES_OVERWRITE) {
                         const sure = await ctx.callGenericPopup(
                             `确定要用 ${pName} 覆盖当前预设的人设吗？\n`
                             + '（记忆不受影响，只是人设被替换）',
                             ctx.POPUP_TYPE.CONFIRM, '',
                             { okButton: '覆盖', cancelButton: '算了' });
                         if (sure !== true) { ctx.toastr?.info?.('已取消'); return; }
-                    } else if (choice !== true) {
-                        ctx.toastr?.info?.('已取消导入');
-                        return;
                     }
 
-                    const r = await api.importAll(obj, choice !== 'overwrite');
+                    const r = await api.importAll(obj, choice === OK_NEW);
                     ctx.toastr?.success?.(
                         `导入完成：人设「${r.persona || '（无）'}」，`
                         + `新增 ${r.worlds} 个世界 / ${r.saves} 个存档 / ${r.entries} 条记忆`
@@ -690,14 +701,55 @@ export function renderPanel(o) {
      *        而且旧输入框的 onchange 会把旧内容写进新激活的人设
      *     ② 首屏调用忘了传参数 → rebuild 为假 → 整块空白
      *   整块重建很便宜（几十个元素），不值得为这点性能冒两个 bug 的险。
+     *
+     * ★ 外层还有一道兜底：重建后如果人设下拉的数量和 settings 对不上，
+     *   就把整个面板拆了重挂（见 ensureConsistent）。
      */
     function refresh() {
         try {
             rebuildInner();
         } catch (e) {
-            console.warn('[CMCC] 重建设置面板失败', e);
+            console.error('[CMCC] 重建设置面板失败 —— 这会导致界面不更新', e);
+            ctx.toastr?.error?.('设置面板刷新失败：' + (e && e.message));
         }
-        refreshStats();
+        try {
+            refreshStats();
+        } catch (e) {
+            console.warn('[CMCC] 刷新记忆总览失败', e);
+        }
+        ensureConsistent();
+    }
+
+    /**
+     * 兜底：界面里的人设数量必须和 settings 里的一致
+     *
+     * 如果对不上（比如重建中途抛错、或 api.listPersonas 返回异常），
+     * 就把面板整个拆掉重挂一次。宁可闪一下，也不能让界面停在错误状态 ——
+     * 用户报的「导入后没有显示 / 删了人设界面不变」就是界面停在错误状态。
+     */
+    function ensureConsistent() {
+        if (!root.parentElement) return;      // 还没挂上，不用管
+        let expect = null;
+        try {
+            expect = (typeof api.listPersonas === 'function' ? api.listPersonas() : []).length;
+        } catch (e) { return; }
+        if (expect === null) return;
+
+        const shown = (function () {
+            const sel = root.querySelector('.cmcc-select');
+            return sel ? sel.children.length : -1;
+        })();
+
+        if (shown === expect) return;
+
+        console.warn('[CMCC] 面板显示 %d 个人设，settings 里有 %d 个 —— 整个面板重挂一次',
+            shown, expect);
+        try {
+            root.remove();
+            renderPanel({ settings, onSave, ctx, api, onOpenTop });
+        } catch (e) {
+            console.error('[CMCC] 重挂面板也失败了', e);
+        }
     }
 
     const host = document.getElementById('extensions_settings2')
