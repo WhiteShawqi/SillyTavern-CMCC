@@ -15,7 +15,5 @@ tests/layout/state.js
 tests/layout/store.js
 tests/layout/memo.js
 tests/layout/summary.js
-tests/layout/selection.js
-tests/layout/editor.js
 tests/layout/style.css
 tests/layout/_render/

@@ -47,7 +47,46 @@ import { renderPanel } from './src/ui.js';
 // index.js 不需要再导入它们。
 import { openEditor, refreshEditor } from './src/editor.js';
 
-const MANIFEST_VERSION = '1.0.0';
+/**
+ * 当前版本号
+ *
+ * ★ 这里**故意不再是硬编码的单一常量**。
+ *   原来写 `const MANIFEST_VERSION = '1.0.0'`，结果从 v1.0.0 之后
+ *   每次发版都忘了改，编辑器「关于」里一直显示 1.0.0（而 manifest 已经 1.3.4）。
+ *   同一个数字写在两处，早晚要漂。
+ *
+ *   现在以 manifest.json 为**唯一来源**，运行时读：
+ *     ① 静态 import（Node 测试环境可用）
+ *     ② fetch 兜底（浏览器里 ① 失败时走这条；扩展脚本是动态注入的 module，
+ *        import JSON 需要的 import attribute 不保证被支持）
+ *     ③ 都失败才退回下面的常量 —— 有断言守着它必须等于 manifest 的值
+ *
+ *   VERSION_FALLBACK 由 tools/sync-version.mjs 在发版时同步，别手改。
+ */
+const VERSION_FALLBACK = '1.3.5';
+let MANIFEST_VERSION = VERSION_FALLBACK;
+
+/** 异步把版本号换成 manifest 里的真实值（读不到就保留兜底值） */
+async function loadManifestVersion() {
+    // ① 静态 import
+    try {
+        const mod = await import('./manifest.json', { with: { type: 'json' } });
+        const v = (mod.default || mod)?.version;
+        if (v) { MANIFEST_VERSION = v; return v; }
+    } catch (e) { /* 换 ② */ }
+
+    // ② 同目录相对路径 fetch（./manifest.json）
+    try {
+        const resp = await fetch('./manifest.json', { cache: 'no-cache' });
+        if (resp.ok) {
+            const j = await resp.json();
+            if (j && j.version) { MANIFEST_VERSION = j.version; return j.version; }
+        }
+    } catch (e) { /* 换 ③ */ }
+
+    console.warn(LOG, '读不到 manifest.json 的版本，退回内置值', VERSION_FALLBACK);
+    return VERSION_FALLBACK;
+}
 
 const LOG = `[${APP_ABBR}]`;
 const log = (...a) => console.log(LOG, ...a);
@@ -1129,6 +1168,11 @@ function highlight(node) {
 }
 
 jQuery(async () => {
+    // 先把真实版本号读进来（默认值只是兜底，见 VERSION_FALLBACK 的注释）。
+    // 不 await —— 读 manifest 是纯本地操作、很快，而且编辑器要等用户点了才开，
+    // 那时早就读完了。放在最前面是为了避免任何"显示旧版本"的窗口期。
+    loadManifestVersion().then((v) => log('版本 %s', v)).catch(() => {});
+
     extension_settings[MODULE] = extension_settings[MODULE] || {};
     settings = normalizeSettings(extension_settings[MODULE]);
     // 回写规范化后的设置，保证新增字段落盘
