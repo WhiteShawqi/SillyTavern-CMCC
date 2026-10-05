@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>CMCC 编辑器浏览器验证</title>
+<!--
+  浏览器验证页（真实布局 + 真实 CSS）—— 弹出式编辑器
+  用法：node tests/layout/run.mjs
+  结果写在 document.title，格式 CMCC_EDITOR={...}
+
+  为什么要这一页：假 DOM 测不出布局与 CSS。
+  这页用真浏览器 + 真 style.css 把编辑器挂出来，量真实尺寸。
+-->
+<style>
+:root {
+    --SmartThemeBlurTintColor: rgba(20, 22, 26, 0.94);
+    --SmartThemeBodyColor: #e6e6e6;
+    --SmartThemeBorderColor: #4a4f57;
+    --SmartThemeQuoteColor: #7aa2f7;
+    --mainFontSize: 15px;
+}
+body {
+    margin: 0;
+    padding: 16px;
+    background: #0d0f12;
+    color: #e6e6e6;
+    font-family: 'Microsoft YaHei', sans-serif;
+    font-size: var(--mainFontSize);
+}
+/* 模拟 ST 弹窗容器的尺寸约束 */
+#popup-host {
+    width: 640px;
+    height: 560px;
+    margin: 0 auto;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 8px;
+    background: var(--SmartThemeBlurTintColor);
+    padding: 10px;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+.text_pole {
+    background: #1b1e24; color: inherit; border: 1px solid #3a3f47;
+    border-radius: 4px; padding: 4px 6px; font: inherit; width: 100%; box-sizing: border-box;
+}
+.menu_button {
+    background: #232830; color: inherit; border: 1px solid #3a3f47;
+    border-radius: 4px; padding: 4px 10px; cursor: pointer; font: inherit;
+}
+</style>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+<div id="popup-host"></div>
+
+<script type="module">
+import { buildEditor } from './editor.js';
+
+const errors = [];
+const noop = () => {};
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+const ctx = {
+    characters: [{ name: '小满', avatar: 'x.png' }],
+    callGenericPopup: async () => null,
+    POPUP_TYPE: { INPUT: 1, CONFIRM: 2, TEXT: 3 },
+    toastr: { info: noop, success: noop, warning: noop, error: noop },
+    powerUserSettings: {},
+};
+
+const WORLDS = {
+    w1: { label: '世界A', saves: {
+        s1: { label: '存档1', entries: [{ text: '第一条' }, { text: '第二条' }] },
+        s2: { label: '存档2', entries: [{ text: '第三条' }] },
+    } },
+};
+
+const api = {
+    snapshot: () => ({
+        bookName: 'CMCC-记忆库', personaMode: 'builtin', companionName: '小满',
+        hasCompanion: true, injectMemory: true, companionAvatar: 'x.png',
+        builtin: {
+            name: '小满', description: '灰发少女',
+            personality: '话少', scenario: '同伴',
+        },
+        stats: { worldCount: 1, totalEntries: 3, sharedCount: 0, worlds: [
+            { key: 'w1', label: '世界A', saveCount: 2, count: 3,
+              saves: [{ key: 's1', label: '存档1', count: 2 },
+                      { key: 's2', label: '存档2', count: 1 }] },
+        ] },
+        shared: [], worlds: WORLDS,
+    }),
+    currentPos: () => ({ wKey: 'w1', sKey: 's1', wLabel: '世界A' }),
+    listPersonas: () => [{ id: 'p1', name: '小满' }],
+    summarize: noop, reload: async () => {}, addMemory: async () => {},
+    addShared: async () => {}, editShared: async () => {}, deleteShared: async () => {},
+    editMemory: async () => {}, deleteMemory: async () => {},
+    deleteMemories: async () => 0, deleteSave: async () => {},
+    renameSave: async () => {}, renameWorld: async () => {},
+    editPersona: async () => {}, cleanEmpty: async () => ({ saves: 0, worlds: 0 }),
+    deleteByScope: async () => ({ deleted: 0, what: '' }),
+    exportAll: async () => ({ worlds: {} }),
+    refreshTop: noop,
+};
+
+const R = { errors, ok: false };
+
+/** 量一个元素的真实尺寸 */
+function box(el) {
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { w: Math.round(r.width), h: Math.round(r.height), visible: r.width > 2 && r.height > 2 };
+}
+
+try {
+    const host = document.getElementById('popup-host');
+    const root = buildEditor({ ctx, api, version: '1.3.3' });
+    host.appendChild(root);
+    await sleep(120);
+
+    const tabs = [...root.querySelectorAll('.cmcc-tab')];
+    R.tabCount = tabs.length;
+    R.tabLabels = tabs.map((t) => t.textContent);
+    R.tabsOk = R.tabCount === 4
+        && R.tabLabels.join('|') === '陪伴角色|人设|记忆|关于';
+
+    // 默认停在「陪伴角色」
+    R.activeTabInitial = (root.querySelector('.cmcc-tab.is-active') || {}).dataset?.tab || '';
+
+    const panes = root.querySelector('.cmcc-panes');
+    R.panesVisible = box(panes).visible;
+    R.panesH = box(panes).h;
+
+    // ── 逐个标签点开，每个都要有内容、且能滚 ──
+    const perTab = [];
+    for (const t of tabs) {
+        t.click();
+        await sleep(90);
+        const pane = root.querySelector('.cmcc-tab-pane');
+        const b = box(pane);
+        perTab.push({
+            tab: t.dataset.tab,
+            hasPane: !!pane,
+            visible: b.visible,
+            h: b.h,
+            children: pane ? pane.children.length : 0,
+            folders: pane ? pane.querySelectorAll('.cmcc-fold').length : 0,
+        });
+    }
+    R.perTab = perTab;
+    R.allTabsHaveContent = perTab.every((x) => x.hasPane && x.children > 0);
+    R.allTabsVisible = perTab.every((x) => x.visible);
+
+    // ── 折叠小节：点标题能开合 ──
+    const pTab = tabs.find((x) => x.dataset.tab === 'memory');
+    R.memTabFound = !!pTab;
+    pTab.click();
+    await sleep(90);
+    const fold = root.querySelector('.cmcc-fold');
+    R.foldFound = !!fold;
+    if (fold) {
+        const head = fold.querySelector('.cmcc-fold-head');
+        const body = fold.querySelector('.cmcc-fold-body');
+        const before = getComputedStyle(body).display;
+        head.click();
+        await sleep(60);
+        const after = getComputedStyle(body).display;
+        head.click();
+        await sleep(60);
+        const back = getComputedStyle(body).display;
+        R.foldToggles = before !== after && before === back;
+        R.foldStates = [before, after, back];
+    }
+
+    // ── 「关于」里更新 / 赞助 / 备份 三个入口都在 ──
+    const aTab = tabs.find((x) => x.dataset.tab === 'about');
+    R.aboutTabFound = !!aTab;
+    aTab.click();
+    await sleep(90);
+    const about = root.querySelector('.cmcc-tab-pane');
+    const aboutText = about ? about.textContent : '';
+    R.aboutHasUpdate = aboutText.includes('更新');
+    R.aboutHasSponsor = !!about.querySelector('a[href*="afdian"]');
+    R.aboutHasBackup = aboutText.includes('备份');
+    R.aboutFolders = about.querySelectorAll('.cmcc-fold').length;
+
+    // ── 编辑器不能撑破容器（弹窗里放不下就废了） ──
+    R.rootBox = box(root);
+    R.hostBox = box(host);
+    R.fitsHost = R.rootBox.h <= R.hostBox.h + 2;
+
+    R.ok = errors.length === 0
+        && R.tabsOk
+        && R.panesVisible
+        && R.allTabsHaveContent && R.allTabsVisible
+        && R.foldFound && R.foldToggles
+        && R.aboutHasUpdate && R.aboutHasSponsor && R.aboutHasBackup
+        && R.fitsHost;
+} catch (e) {
+    errors.push('抛错: ' + (e && e.message) + ' @ ' + String(e && e.stack || '').split('\n')[1]);
+}
+
+document.title = 'CMCC_EDITOR=' + JSON.stringify(R);
+try { console.log(document.title); } catch (e) {}
+
+const pre = document.createElement('pre');
+pre.id = 'cmcc_result';
+pre.style.cssText = 'margin:12px;padding:8px;background:#111;color:#9f9;font-size:12px;'
+    + 'white-space:pre-wrap;border-radius:4px';
+pre.textContent = '结果: ' + (R.ok ? '全部通过 ✓' : '有失败 ✗') + '\n' + JSON.stringify(R, null, 2);
+document.body.appendChild(pre);
+</script>
+</body>
+</html>

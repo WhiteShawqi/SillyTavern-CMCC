@@ -1084,3 +1084,172 @@ details.cmcc[open] > *:not(summary):last-child {
     font-size: 1.05em;
     line-height: 1;
 }
+
+/* ══════════════════════════════════════════════
+   弹出式编辑器（人设 / 记忆）
+   —— 用一个弹窗装标签页，每个标签页内部再分可折叠小节
+   ══════════════════════════════════════════════ */
+
+.cmcc-editor {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    max-height: 68vh;
+    width: 100%;
+    box-sizing: border-box;
+    text-align: left;
+}
+
+/* ── 标签栏 ── */
+.cmcc-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding-bottom: 8px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid rgba(127 127 127 / 0.28);
+    flex: 0 0 auto;
+}
+
+.cmcc-tab {
+    appearance: none;
+    border: 1px solid transparent;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 0.95em;
+    padding: 5px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    opacity: 0.65;
+    white-space: nowrap;
+    transition: opacity 0.12s ease, background 0.12s ease;
+}
+
+.cmcc-tab:hover {
+    opacity: 1;
+    background: rgba(127 127 127 / 0.12);
+}
+
+.cmcc-tab.is-active {
+    opacity: 1;
+    font-weight: bold;
+    background: rgba(122 162 247 / 0.18);
+    border-color: rgba(122 162 247 / 0.5);
+}
+
+/* ── 内容区 ── */
+.cmcc-panes {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 4px;
+}
+
+.cmcc-tab-pane {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.cmcc-tab-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 2px 0 6px;
+    font-size: 0.95em;
+    flex: 0 0 auto;
+}
+
+.cmcc-tab-head .menu_button { margin-left: auto; }
+
+/* ── 可折叠小节 ── */
+.cmcc-fold {
+    border: 1px solid rgba(127 127 127 / 0.22);
+    border-radius: 6px;
+    overflow: hidden;
+    flex: 0 0 auto;
+}
+
+.cmcc-fold-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 9px;
+    cursor: pointer;
+    user-select: none;
+    font-weight: bold;
+    font-size: 0.95em;
+    background: rgba(127 127 127 / 0.07);
+}
+
+.cmcc-fold-head:hover { background: rgba(127 127 127 / 0.14); }
+
+.cmcc-fold-chev {
+    flex: 0 0 auto;
+    width: 1em;
+    opacity: 0.6;
+    font-size: 0.9em;
+}
+
+.cmcc-fold-body {
+    padding: 8px 9px;
+    border-top: 1px solid rgba(127 127 127 / 0.18);
+}
+
+/* ── 「关于」里的行 ── */
+.cmcc-about-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+}
+
+.cmcc-about-info {
+    flex: 1 1 180px;
+    min-width: 0;
+    line-height: 1.6;
+}
+
+.cmcc-update-status { margin-top: 4px; }
+
+.cmcc-update-avail {
+    color: #ffd479;
+    font-weight: bold;
+}
+
+/* 补齐编辑器里用到、但上面没定义的三个类 */
+.cmcc-fold-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cmcc-mem-tree {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: 6px;
+}
+
+.cmcc-selectbar-box {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+/* 主操作按钮（「打开编辑器」）—— 编辑人设与记忆的主入口，做得显眼一点 */
+.cmcc-primary-btn {
+    font-weight: bold;
+    border-color: color-mix(in srgb, var(--SmartThemeQuoteColor, #7aa2f7) 55%, transparent);
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor, #7aa2f7) 16%, transparent);
+}
+
+.cmcc-primary-btn:hover {
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor, #7aa2f7) 28%, transparent);
+}

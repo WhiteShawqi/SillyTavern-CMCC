@@ -16,7 +16,11 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..', '..');
 const srcDir = join(root, 'src');
 
-const FILES = ['ui.js', 'topbar.js', 'inject.js', 'state.js', 'store.js', 'memo.js', 'summary.js'];
+const FILES = [
+    'ui.js', 'topbar.js', 'inject.js', 'state.js', 'store.js', 'memo.js', 'summary.js',
+    // v1.3.3：弹出式编辑器 + 共享的勾选状态
+    'editor.js', 'selection.js',
+];
 
 mkdirSync(srcDir, { recursive: true });
 mkdirSync(here, { recursive: true });

@@ -2,9 +2,9 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>CMCC 多选勾选浏览器验证</title>
+<title>CMCC 多选勾选浏览器验证（编辑器）</title>
 <!--
-  在**真实 renderTopPanel** 里验证多选勾选：
+  在**真实 buildEditor()** 的记忆标签里验证多选勾选：
     · 进多选后，三级是否都出现勾选框
     · 点世界 → 下面存档和记忆的框是否跟着变成勾上
     · 点记忆 → 世界/存档框是否变成半选
@@ -76,17 +76,30 @@ input[type='checkbox']:checked::before { transform: scale(1); }
     border-radius: 4px; padding: 4px 10px; cursor: pointer; font: inherit;
 }
 </style>
+<style>
+/* 模拟 ST 弹窗容器的尺寸约束 */
+#popup-host {
+    width: 640px;
+    height: 620px;
+    margin: 0 auto;
+    border: 1px solid var(--SmartThemeBorderColor, #4a4f57);
+    border-radius: 8px;
+    background: var(--SmartThemeBlurTintColor, rgba(20, 22, 26, 0.94));
+    padding: 10px;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+</style>
 <link rel="stylesheet" href="./style.css">
 </head>
 <body>
 
-<div id="top-settings-holder">
-    <div class="drawer" id="d1"><div class="drawer-icon">1</div></div>
-    <div class="drawer" id="d5"><div class="drawer-icon">5</div></div>
-</div>
+<!-- v1.3.3：顶部面板取消，改成把编辑器挂在这个容器里量真实布局 -->
+<div id="popup-host"></div>
 
 <script type="module">
-import { mountTopDrawer, renderTopPanel, __selTestHook } from './topbar.js';
+import { buildEditor } from './editor.js';
+import { __selTestHook } from './selection.js';
 
 const errors = [];
 const noop = () => {};
@@ -154,34 +167,66 @@ function probe(el) {
 }
 
 try {
-    mountTopDrawer();
-    const drawer = document.getElementById('cmcc-top-drawer');
-    drawer.querySelector('.drawer-icon').click();
-    await sleep(100);
+    // ★ v1.3.3：顶部面板取消了，改成把编辑器挂出来测
+    const host = document.getElementById('popup-host');
+    const root = buildEditor({ ctx, api, version: '1.3.3' });
+    host.appendChild(root);
+    await sleep(120);
 
-    // ── ① 先出多选栏（模拟点「多选」）──
+    // 切到「记忆」标签
+    const memTab = [...root.querySelectorAll('.cmcc-tab')]
+        .find((t) => t.dataset.tab === 'memory');
+    R.memTabFound = !!memTab;
+    if (memTab) memTab.click();
+    await sleep(120);
+
+    // 展开「多选批量删除」那个折叠小节 ——
+    // ⚠ 必须展开：折叠时 display:none 量不到尺寸，probe() 会全部判为不可见
+    const selFold = [...root.querySelectorAll('.cmcc-fold')]
+        .find((f) => f.textContent.includes('多选批量删除'));
+    R.selFoldFound = !!selFold;
+    if (selFold) {
+        const body = selFold.querySelector('.cmcc-fold-body');
+        if (getComputedStyle(body).display === 'none') {
+            selFold.querySelector('.cmcc-fold-head').click();
+            await sleep(80);
+        }
+    }
+
+    // 展开「记忆树视图」（默认是展开的，但保险起见确认一下）
+    const treeFold = [...root.querySelectorAll('.cmcc-fold')]
+        .find((f) => f.textContent.includes('记忆树视图'));
+    if (treeFold) {
+        const body = treeFold.querySelector('.cmcc-fold-body');
+        if (getComputedStyle(body).display === 'none') {
+            treeFold.querySelector('.cmcc-fold-head').click();
+            await sleep(80);
+        }
+    }
+
+    // ── ① 进入多选（模拟点「进入多选」）──
     __selTestHook.setMode(false);
-    renderTopPanel({ ctx, api, onGotoSettings: noop });
-    await sleep(60);
+    if (memTab) memTab.click();
+    await sleep(80);
 
-    const toggleBtn = [...document.querySelectorAll('.cmcc-selbar button')]
+    const toggleBtn = [...root.querySelectorAll('.cmcc-selbar button')]
         .find((b) => b.textContent.includes('多选'));
     R.toggleBtnFound = !!toggleBtn;
     if (toggleBtn) toggleBtn.click();
     await sleep(80);
 
     R.afterToggleSelectMode = __selTestHook.getMode();
-    R.checkboxCount = document.querySelectorAll('.cmcc-check').length;
-    R.worldChecks = document.querySelectorAll('.cmcc-world-check').length;
-    R.saveChecks = document.querySelectorAll('.cmcc-save-check').length;
+    R.checkboxCount = root.querySelectorAll('.cmcc-check').length;
+    R.worldChecks = root.querySelectorAll('.cmcc-world-check').length;
+    R.saveChecks = root.querySelectorAll('.cmcc-save-check').length;
 
     // 全部勾选框都要看得见
-    const all = [...document.querySelectorAll('.cmcc-check')];
+    const all = [...root.querySelectorAll('.cmcc-check')];
     R.allCheckboxesVisible = all.length > 0 && all.every((c) => probe(c).visible);
     R.probeBefore = all.map(probe);
 
     // ── ② 点世界标题行的勾选框 → 下面全勾 ──
-    const wcb = document.querySelector('.cmcc-world-check');
+    const wcb = root.querySelector('.cmcc-world-check');
     R.worldCheckFound = !!wcb;
     if (wcb) {
         wcb.checked = true;
@@ -189,7 +234,7 @@ try {
         await sleep(150);
     }
 
-    const afterWorld = [...document.querySelectorAll('.cmcc-check')].map(probe);
+    const afterWorld = [...root.querySelectorAll('.cmcc-check')].map(probe);
     R.afterWorldClick = afterWorld;
     R.allCheckedAfterWorld = afterWorld.length > 0 && afterWorld.every((p) => p.checked);
     // ★ 勾要真的画出来（tickScale ≈ 1），不能只是 checked=true
@@ -199,14 +244,14 @@ try {
     R.selWorldsAfterWorld = __selTestHook.SELECTED_WORLDS.size;
 
     // ── ③ 取消一条记忆 → 世界和存档应变成半选 ──
-    const rowCb = document.querySelector('.cmcc-entry input.cmcc-check');
+    const rowCb = root.querySelector('.cmcc-entry input.cmcc-check');
     if (rowCb) {
         rowCb.checked = false;
         rowCb.dispatchEvent(new Event('change'));
         await sleep(120);
     }
-    const wcb2 = document.querySelector('.cmcc-world-check');
-    const scb2 = document.querySelector('.cmcc-save-check');
+    const wcb2 = root.querySelector('.cmcc-world-check');
+    const scb2 = root.querySelector('.cmcc-save-check');
     const pw = probe(wcb2), ps = probe(scb2);
     R.afterUncheckOne = { world: pw, save: ps };
     R.worldIndeterminate = !!pw && pw.indeterminate;
@@ -216,6 +261,7 @@ try {
         && (pw.hasDash || pw.tickScale < 0.9);
 
     R.ok = errors.length === 0
+        && R.memTabFound && R.selFoldFound
         && R.toggleBtnFound && R.afterToggleSelectMode === true
         && R.checkboxCount === 6            // 1 世界 + 2 存档 + 3 条记忆
         && R.worldChecks === 1 && R.saveChecks === 2
