@@ -428,7 +428,7 @@ function tabPersona({ ctx, api, snap, rerender }) {
 function tabMemory({ ctx, api, snap, cur, rerender }) {
     const box = el('div', 'cmcc-tab-pane');
 
-    // ── 记忆树（主体）──
+    // ── 顶部：规模 + 当前位置 ──
     const head = el('div', 'cmcc-tab-head');
     head.innerHTML = `<b>${snap.stats.worldCount}</b> 个世界 · `
         + `<b>${snap.stats.totalEntries}</b> 条记忆`;
@@ -440,68 +440,63 @@ function tabMemory({ ctx, api, snap, cur, rerender }) {
 
     box.appendChild(el('div', 'cmcc-now', `当前位置：<b>${cur.wLabel || '—'}</b>`));
 
-    // 展开 / 收起 / 只看当前
-    const viewRow = el('div', 'cmcc-btns');
-    const mkView = (label, fn, title) => {
-        const b = el('button', 'menu_button cmcc-mini', label);
-        if (title) b.title = title;
-        b.onclick = fn;
-        return b;
-    };
-    viewRow.appendChild(mkView('全部展开', () => { clearCollapsed(); rerender(); }));
-    viewRow.appendChild(mkView('全部收起', () => {
-        const keys = [];
-        for (const w of snap.stats.worlds) {
-            keys.push('w:' + w.key);
-            for (const s of w.saves) keys.push(saveKeyId(w.key, s.key));
-        }
-        collapseAll(keys);
-        rerender();
-    }));
-    viewRow.appendChild(mkView('只看当前', () => {
-        clearCollapsed();
-        const keys = [];
-        for (const w of snap.stats.worlds) {
-            if (w.key !== cur.wKey) keys.push('w:' + w.key);
-            for (const s of w.saves) {
-                if (w.key !== cur.wKey || s.key !== cur.sKey) keys.push(saveKeyId(w.key, s.key));
-            }
-        }
-        collapseAll(keys);
-        rerender();
-    }, '只展开当前世界与当前存档'));
-    const bBook = mkView('打开世界书', () => openWorldBook(ctx, snap.bookName),
-        '用酒馆自己的编辑器改记忆（适合批量改）');
-    viewRow.appendChild(bBook);
-    box.appendChild(folder('记忆树视图', true, [
-        viewRow,
-        buildMemoryTree({ ctx, api, rerender, snap, cur }),
-    ]));
+    // ── 顶部按钮排（多选就在这一排里，不再单独折叠）──
+    box.appendChild(makeMemoryTopBar({ ctx, api, snap, cur, rerender }));
 
-    // ── 多选批量删 ──
-    box.appendChild(folder('多选批量删除', false, buildSelectBar({ ctx, api, snap, rerender })));
+    // ── 多选态下的提示 ──
+    if (getSelectMode()) {
+        box.appendChild(el('div', 'cmcc-hint',
+            '已进入多选。下面每一行（世界 / 存档 / 记忆）都有勾选框，'
+            + '<b>勾世界会连带它下面所有存档和记忆</b>。'));
+    }
 
-    // ── 按范围删 ──
+    // ── 记忆树 ──
+    box.appendChild(buildMemoryTree({ ctx, api, rerender, snap, cur }));
+
+    // ── 按范围删（这个保留折叠：破坏性操作，不该摆在明面上）──
     box.appendChild(folder('按范围删除', false, buildDangerZone({ ctx, api, cur, rerender })));
 
     return box;
 }
 
-/** 多选工具栏 */
-function buildSelectBar({ ctx, api, snap, rerender }) {
-    const box = el('div', 'cmcc-selectbar-box');
+/**
+ * 「记忆」标签的顶部按钮排
+ *
+ * ★ 用户反馈「多选没必要单独收，应放在顶部即可」。
+ *   原来多选是个独立的折叠小节，藏在记忆树下面 —— 要进多选得先展开它，
+ *   很绕。现在它就是顶部那一排里的一个按钮。
+ *
+ * 两种状态：
+ *   普通 —— [☑ 多选] [全部展开] [全部收起] [只看当前] [打开世界书]
+ *   多选 —— [✕ 退出多选] 已选 N 条 [全选当前] [清空勾选] [删除选中的 N 项]
+ */
+function makeMemoryTopBar({ ctx, api, snap, cur, rerender }) {
+    const row = el('div', 'cmcc-btns cmcc-mem-topbar');
     const selectMode = getSelectMode();
 
-    const row = el('div', 'cmcc-selbar');
-    const bToggle = el('button', 'menu_button cmcc-mini',
-        selectMode ? '✕ 退出多选' : '☑ 进入多选');
-    bToggle.onclick = () => {
-        setSelectMode(!selectMode);
-        if (!getSelectMode()) clearSelection();
-        rerender();
+    /** 造一个按钮 */
+    const mk = (label, fn, title, extraCls) => {
+        const b = el('button', 'menu_button cmcc-mini' + (extraCls ? ' ' + extraCls : ''), label);
+        if (title) b.title = title;
+        b.onclick = fn;
+        return b;
     };
-    row.appendChild(bToggle);
 
+    // ── 进 / 出多选（普通态下它是主按钮，好找）──
+    row.appendChild(mk(
+        selectMode ? '✕ 退出多选' : '☑ 多选',
+        () => {
+            setSelectMode(!getSelectMode());
+            if (!getSelectMode()) clearSelection();
+            rerender();
+        },
+        selectMode ? '退出多选模式' : '勾选多条记忆一起删',
+        selectMode ? '' : 'cmcc-primary-btn',
+    ));
+
+    // ══════════════════════════════════════════
+    // 多选态：只留和勾选有关的操作
+    // ══════════════════════════════════════════
     if (selectMode) {
         const wN = SELECTED_WORLDS.size;
         const sN = SELECTED_SAVES.size;
@@ -510,8 +505,7 @@ function buildSelectBar({ ctx, api, snap, rerender }) {
             + (sN ? ` + ${sN} 个存档` : '')
             + (wN ? ` + ${wN} 个世界` : '')));
 
-        const bAll = el('button', 'menu_button cmcc-mini', '全选当前');
-        bAll.onclick = () => {
+        row.appendChild(mk('全选当前', () => {
             for (const w of snap.stats.worlds) {
                 for (const s of w.saves) {
                     const arr = snap.worlds?.[w.key]?.saves?.[s.key]?.entries || [];
@@ -519,71 +513,106 @@ function buildSelectBar({ ctx, api, snap, rerender }) {
                 }
             }
             rerender();
-        };
-        row.appendChild(bAll);
+        }, '勾选当前世界里的全部记忆'));
 
-        const bNone = el('button', 'menu_button cmcc-mini', '清空勾选');
-        bNone.onclick = () => { clearSelection(); rerender(); };
-        row.appendChild(bNone);
+        row.appendChild(mk('清空勾选', () => { clearSelection(); rerender(); }));
 
         const total = selectedTotal();
-        const bDel = el('button', 'menu_button cmcc-mini cmcc-danger',
-            (sN || wN) ? `删除选中的 ${total} 项` : `删除选中的 ${SELECTED.size} 条`);
+        const bDel = mk(
+            (sN || wN) ? `删除选中的 ${total} 项` : `删除选中的 ${SELECTED.size} 条`,
+            async () => {
+                if (!total) return;
+                const desc = [
+                    SELECTED.size ? `${SELECTED.size} 条记忆` : '',
+                    sN ? `${sN} 个存档（含其全部记忆）` : '',
+                    wN ? `${wN} 个世界（含其全部存档）` : '',
+                ].filter(Boolean).join(' + ');
+                const ok = await ctx.callGenericPopup(
+                    `确定删除 ${desc}？此操作不可撤销。`, ctx.POPUP_TYPE.CONFIRM);
+                if (!ok) return;
+
+                let n = 0;
+                // 顺序有讲究：先整世界 → 再整存档 → 最后零散记忆。
+                // 后两步都要跳过已被删掉的部分，否则条目下标会错位、删错东西。
+                const deadWorlds = new Set(SELECTED_WORLDS);
+                for (const wk of deadWorlds) {
+                    const r = await api.deleteByScope('currentWorld', wk);
+                    n += r.deleted;
+                }
+                const deadSaves = new Set();
+                for (const k of SELECTED_SAVES) {
+                    const parts = k.split('\u0000');
+                    const w = parts[0], sk = parts[1];
+                    if (deadWorlds.has(w)) continue;
+                    deadSaves.add(k);
+                    const r = await api.deleteByScope('save', w, sk);
+                    n += r.deleted;
+                }
+                const groups = new Map();
+                for (const k of SELECTED) {
+                    const [w, sk, i] = parseEntryKey(k);
+                    if (deadWorlds.has(w)) continue;
+                    if (deadSaves.has(w + '\u0000' + sk)) continue;
+                    const gk = w + '\u0000' + sk;
+                    if (!groups.has(gk)) groups.set(gk, { w, s: sk, idx: [] });
+                    groups.get(gk).idx.push(i);
+                }
+                for (const g of groups.values()) {
+                    n += await api.deleteMemories(g.w, g.s, g.idx);
+                }
+
+                const extra = [
+                    deadSaves.size ? `${deadSaves.size} 个存档` : '',
+                    deadWorlds.size ? `${deadWorlds.size} 个世界` : '',
+                ].filter(Boolean).join(' + ');
+                clearSelection();
+                ctx.toastr?.success?.(`已删除 ${n} 条记忆` + (extra ? `（含 ${extra}）` : ''));
+                rerender();
+            },
+            '', 'cmcc-danger',
+        );
         bDel.disabled = total === 0;
-        bDel.onclick = async () => {
-            if (!total) return;
-            const desc = [
-                SELECTED.size ? `${SELECTED.size} 条记忆` : '',
-                sN ? `${sN} 个存档（含其全部记忆）` : '',
-                wN ? `${wN} 个世界（含其全部存档）` : '',
-            ].filter(Boolean).join(' + ');
-            const ok = await ctx.callGenericPopup(
-                `确定删除 ${desc}？此操作不可撤销。`, ctx.POPUP_TYPE.CONFIRM);
-            if (!ok) return;
-
-            let n = 0;
-            const deadWorlds = new Set(SELECTED_WORLDS);
-            for (const wk of deadWorlds) {
-                const r = await api.deleteByScope('currentWorld', wk);
-                n += r.deleted;
-            }
-            const deadSaves = new Set();
-            for (const k of SELECTED_SAVES) {
-                const [w, sk] = k.split('\u0000');
-                if (deadWorlds.has(w)) continue;
-                deadSaves.add(k);
-                const r = await api.deleteByScope('save', w, sk);
-                n += r.deleted;
-            }
-            const groups = new Map();
-            for (const k of SELECTED) {
-                const [w, s, i] = parseEntryKey(k);
-                if (deadWorlds.has(w)) continue;
-                if (deadSaves.has(w + '\u0000' + s)) continue;
-                const gk = w + '\u0000' + s;
-                if (!groups.has(gk)) groups.set(gk, { w, s, idx: [] });
-                groups.get(gk).idx.push(i);
-            }
-            for (const { w, s, idx } of groups.values()) {
-                n += await api.deleteMemories(w, s, idx);
-            }
-
-            const extra = [
-                deadSaves.size ? `${deadSaves.size} 个存档` : '',
-                deadWorlds.size ? `${deadWorlds.size} 个世界` : '',
-            ].filter(Boolean).join(' + ');
-            clearSelection();
-            ctx.toastr?.success?.(`已删除 ${n} 条记忆` + (extra ? `（含 ${extra}）` : ''));
-            rerender();
-        };
+        bDel.classList.add('cmcc-del-btn');
         row.appendChild(bDel);
+
+        return row;
     }
 
-    box.appendChild(row);
-    box.appendChild(el('div', 'cmcc-hint',
-        '进入多选后，记忆树每一行（世界 / 存档 / 记忆）都会出现勾选框。'
-        + '勾世界会连带它下面所有存档和记忆。'));
-    return box;
+    // ══════════════════════════════════════════
+    // 普通态：视图操作
+    // ══════════════════════════════════════════
+    row.appendChild(mk('全部展开', () => { clearCollapsed(); rerender(); },
+        '展开所有世界与存档'));
+
+    row.appendChild(mk('全部收起', () => {
+        const keys = [];
+        for (const w of snap.stats.worlds) {
+            keys.push('w:' + w.key);
+            for (const s of w.saves) keys.push(saveKeyId(w.key, s.key));
+        }
+        collapseAll(keys);
+        rerender();
+    }, '收起所有世界与存档'));
+
+    row.appendChild(mk('只看当前', () => {
+        clearCollapsed();
+        const keys = [];
+        for (const w of snap.stats.worlds) {
+            if (w.key !== cur.wKey) keys.push('w:' + w.key);
+            for (const s of w.saves) {
+                if (w.key !== cur.wKey || s.key !== cur.sKey) {
+                    keys.push(saveKeyId(w.key, s.key));
+                }
+            }
+        }
+        collapseAll(keys);
+        rerender();
+    }, '只展开当前世界与当前存档'));
+
+    row.appendChild(mk('打开世界书', () => openWorldBook(ctx, snap.bookName),
+        '用酒馆自己的编辑器改记忆（适合批量改）'));
+
+    return row;
 }
 
 /** 按范围删除 */
@@ -949,3 +978,8 @@ export function refreshEditor() {
 
 /** 供测试与调试 */
 export { TABS, folder as __folder };
+
+/** 仅供测试/调试：预置当前标签页 */
+export function __setActiveTab(id) {
+    if (TABS.some((t) => t.id === id)) ACTIVE_TAB = id;
+}

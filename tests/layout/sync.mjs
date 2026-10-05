@@ -35,4 +35,32 @@ for (const f of FILES) {
 // 样式
 copyFileSync(join(root, 'style.css'), join(here, 'style.css'));
 n++;
+
+// ★ 顺便拷一份**真实的 ST style.css**
+//   为什么需要：用户报「按钮竖着排」，根因在 ST 的
+//       .menu_button { width: min-content }
+//   —— 只引我们自己的 style.css 根本量不出这个问题，
+//   按钮尺寸测试就成了摆设。所以必须引真样式。
+//   这个文件也写进 .gitignore（140 KB，不该入库）。
+const ST_CANDIDATES = [
+    process.env.CMCC_ST_DIR,
+    'F:/PRTS AI/SillyTavern/public/style.css',
+].filter(Boolean);
+let gotSt = false;
+for (const c of ST_CANDIDATES) {
+    try {
+        if (existsSync(c)) {
+            copyFileSync(c, join(here, 'st-style.css'));
+            n++;
+            gotSt = true;
+            console.log('  ✓ 已拷真实 ST 样式: ' + c);
+            break;
+        }
+    } catch (e) { /* 试下一个 */ }
+}
+if (!gotSt) {
+    console.log('  ⚠ 没找到 ST 的 style.css —— 按钮尺寸测试会失真。');
+    console.log('    可以用 CMCC_ST_DIR 环境变量指定它的路径。');
+}
+
 console.log(`✓ 已同步 ${n} 个文件到 tests/layout/`);

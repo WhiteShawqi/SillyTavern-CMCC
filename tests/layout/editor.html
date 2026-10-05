@@ -48,6 +48,8 @@ body {
     border-radius: 4px; padding: 4px 10px; cursor: pointer; font: inherit;
 }
 </style>
+<!-- 真实 ST 样式：按钮尺寸问题只有引了它才量得出来 -->
+<link rel="stylesheet" href="./st-style.css">
 <link rel="stylesheet" href="./style.css">
 </head>
 <body>
@@ -114,6 +116,7 @@ function box(el) {
 }
 
 try {
+
     const host = document.getElementById('popup-host');
     const root = buildEditor({ ctx, api, version: '1.3.3' });
     host.appendChild(root);
@@ -173,6 +176,41 @@ try {
         R.foldStates = [before, after, back];
     }
 
+    // ── 多选按钮必须在顶部那一排里（不能藏在折叠小节里）──
+    pTab.click();
+    await sleep(90);
+    const topBar = root.querySelector('.cmcc-mem-topbar');
+    R.topBarFound = !!topBar;
+    const topBtns = topBar ? [...topBar.querySelectorAll('button')] : [];
+    R.topBtnLabels = topBtns.map((b) => (b.textContent || '').trim());
+    R.multiBtnInTopBar = R.topBtnLabels.some((t) => t.includes('多选'));
+    // 顶部这一排不许被塞进任何折叠小节
+    R.topBarNotInFolder = topBar ? !topBar.closest('.cmcc-fold-body') : false;
+    R.viewBtnsInTopBar = ['全部展开', '全部收起', '只看当前', '打开世界书']
+        .every((t) => R.topBtnLabels.some((x) => x.includes(t)));
+    // 顶部按钮不许竖排
+    R.topBtnsOneRow = topBtns.length > 0
+        && new Set(topBtns.map((b) => Math.round(b.getBoundingClientRect().top))).size === 1;
+    R.topBtnsNotWrapped = topBtns.every((b) => {
+        const r = b.getBoundingClientRect();
+        return r.width > r.height;
+    });
+    // 点「多选」→ 顶部换成勾选操作
+    const mb = topBtns.find((b) => (b.textContent || '').includes('多选'));
+    if (mb) {
+        mb.click();
+        await sleep(120);
+        const bar2 = root.querySelector('.cmcc-mem-topbar');
+        const labels2 = bar2 ? [...bar2.querySelectorAll('button')].map((b) => (b.textContent || '').trim()) : [];
+        R.afterEnterSelect = labels2;
+        R.hasExit = labels2.some((t) => t.includes('退出多选'));
+        R.hasSelectAll = labels2.some((t) => t.includes('全选'));
+        R.hasDelete = labels2.some((t) => t.includes('删除选中的'));
+        // 退出，别影响后面的断言
+        const ex = bar2 ? [...bar2.querySelectorAll('button')].find((b) => (b.textContent || '').includes('退出多选')) : null;
+        if (ex) { ex.click(); await sleep(100); }
+    }
+
     // ── 「关于」里更新 / 赞助 / 备份 三个入口都在 ──
     const aTab = tabs.find((x) => x.dataset.tab === 'about');
     R.aboutTabFound = !!aTab;
@@ -195,6 +233,9 @@ try {
         && R.panesVisible
         && R.allTabsHaveContent && R.allTabsVisible
         && R.foldFound && R.foldToggles
+        && R.topBarFound && R.multiBtnInTopBar && R.topBarNotInFolder
+        && R.viewBtnsInTopBar && R.topBtnsOneRow && R.topBtnsNotWrapped
+        && R.hasExit && R.hasSelectAll && R.hasDelete
         && R.aboutHasUpdate && R.aboutHasSponsor && R.aboutHasBackup
         && R.fitsHost;
 } catch (e) {

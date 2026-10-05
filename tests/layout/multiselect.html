@@ -180,18 +180,14 @@ try {
     if (memTab) memTab.click();
     await sleep(120);
 
-    // 展开「多选批量删除」那个折叠小节 ——
-    // ⚠ 必须展开：折叠时 display:none 量不到尺寸，probe() 会全部判为不可见
-    const selFold = [...root.querySelectorAll('.cmcc-fold')]
-        .find((f) => f.textContent.includes('多选批量删除'));
-    R.selFoldFound = !!selFold;
-    if (selFold) {
-        const body = selFold.querySelector('.cmcc-fold-body');
-        if (getComputedStyle(body).display === 'none') {
-            selFold.querySelector('.cmcc-fold-head').click();
-            await sleep(80);
-        }
-    }
+    // ★ v1.3.3：多选按钮现在就在「记忆」标签**顶部那一排**里，
+    //   不再是一个折叠小节 —— 所以不用展开任何东西。
+    //   （用户反馈：「多选没必要单独收，应放在顶部即可」）
+    const topBar = root.querySelector('.cmcc-mem-topbar');
+    R.topBarFound = !!topBar;
+    R.multiBtnInTopBar = !!(topBar && [...topBar.querySelectorAll('button')]
+        .some((b) => (b.textContent || '').includes('多选')));
+    R.topBarNotInFolder = topBar ? !topBar.closest('.cmcc-fold-body') : false;
 
     // 展开「记忆树视图」（默认是展开的，但保险起见确认一下）
     const treeFold = [...root.querySelectorAll('.cmcc-fold')]
@@ -209,8 +205,11 @@ try {
     if (memTab) memTab.click();
     await sleep(80);
 
-    const toggleBtn = [...root.querySelectorAll('.cmcc-selbar button')]
-        .find((b) => b.textContent.includes('多选'));
+    // ★ v1.3.3：多选按钮在顶部那一排（.cmcc-mem-topbar），不再是 .cmcc-selbar
+    const topBar2 = root.querySelector('.cmcc-mem-topbar');
+    const toggleBtn = topBar2
+        ? [...topBar2.querySelectorAll('button')].find((b) => b.textContent.includes('多选'))
+        : null;
     R.toggleBtnFound = !!toggleBtn;
     if (toggleBtn) toggleBtn.click();
     await sleep(80);
@@ -261,7 +260,7 @@ try {
         && (pw.hasDash || pw.tickScale < 0.9);
 
     R.ok = errors.length === 0
-        && R.memTabFound && R.selFoldFound
+        && R.memTabFound && R.topBarFound && R.multiBtnInTopBar && R.topBarNotInFolder
         && R.toggleBtnFound && R.afterToggleSelectMode === true
         && R.checkboxCount === 6            // 1 世界 + 2 存档 + 3 条记忆
         && R.worldChecks === 1 && R.saveChecks === 2

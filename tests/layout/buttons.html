@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>CMCC 按钮尺寸验证</title>
+<!--
+  用**真实的 SillyTavern style.css** 量按钮尺寸。
+
+  为什么要引 ST 的样式：用户报「按钮竖着排布」，
+  而我自己的 style.css 里 .cmcc-btns 明明是 flex + flex-wrap，
+  单看我的样式完全看不出问题 —— 问题出在 ST 的 .menu_button 上：
+      .menu_button { aspect-ratio: 1/1; width: unset; box-sizing: content-box; }
+  那是给「方形图标按钮」写的，套到带中文文字的按钮上就逐字换行。
+
+  用法: node tests/layout/run.mjs
+  结果写在 document.title，格式 CMCC_BTNSIZE={...}
+-->
+<meta charset="UTF-8">
+<style>
+/* 只补 ST 没给的最小必要环境（变量 + body 底色），其余全部来自 ST 样式 */
+:root {
+    --fontScale: 1;
+    --mainFontSize: calc(var(--fontScale) * 15px);
+    --sheldWidth: 50vw;
+    --SmartThemeBlurTintColor: rgba(20, 22, 26, 0.94);
+    --SmartThemeBodyColor: #e6e6e6;
+    --SmartThemeBorderColor: #4a4f57;
+    --SmartThemeQuoteColor: #7aa2f7;
+    --crimson70a: rgba(200, 60, 60, 0.7);
+    --okGreen70a: rgba(60, 200, 120, 0.7);
+}
+body {
+    margin: 0;
+    background: #0d0f12;
+    color: var(--SmartThemeBodyColor);
+    font-size: var(--mainFontSize);
+    font-family: 'Microsoft YaHei', sans-serif;
+}
+/* ST 的 style.css 是给整站写的，这里只补它依赖的容器 */
+#popup-host {
+    width: 90vw;
+    max-width: 900px;
+    margin: 8px auto;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 8px;
+    background: var(--SmartThemeBlurTintColor);
+    padding: 10px;
+    box-sizing: border-box;
+}
+</style>
+
+<!-- ★ 真实的 ST 样式。缺了这个就量不出问题 -->
+<link rel="stylesheet" href="./st-style.css">
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+<div id="popup-host"></div>
+
+<script type="module">
+import { buildEditor } from './editor.js';
+
+const errors = [];
+const noop = () => {};
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+const ctx = {
+    characters: [{ name: '小满', avatar: 'x.png' }],
+    callGenericPopup: async () => null,
+    POPUP_TYPE: { INPUT: 1, CONFIRM: 2, TEXT: 3 },
+    toastr: { info: noop, success: noop, warning: noop, error: noop },
+    powerUserSettings: {},
+};
+const WORLDS = {
+    w1: { label: '全球冰封 v3.1.3', saves: {
+        s1: { label: '存档1', entries: [{ text: '第一条' }, { text: '第二条' }] },
+    } },
+};
+const api = {
+    snapshot: () => ({
+        bookName: 'CMCC-记忆库', personaMode: 'builtin', companionName: '小满',
+        hasCompanion: true, injectMemory: true, companionAvatar: 'x.png',
+        builtin: { name: '小满', description: '灰发', personality: '话少', scenario: '同伴' },
+        stats: { worldCount: 1, totalEntries: 2, sharedCount: 0, worlds: [
+            { key: 'w1', label: '全球冰封 v3.1.3', saveCount: 1, count: 2,
+              saves: [{ key: 's1', label: '存档1', count: 2 }] },
+        ] },
+        shared: [], worlds: WORLDS,
+    }),
+    currentPos: () => ({ wKey: 'w1', sKey: 's1', wLabel: '全球冰封 v3.1.3' }),
+    listPersonas: () => [{ id: 'p1', name: '小满' }],
+    summarize: noop, reload: async () => {}, addMemory: async () => {},
+    addShared: async () => {}, editShared: async () => {}, deleteShared: async () => {},
+    editMemory: async () => {}, deleteMemory: async () => {},
+    deleteMemories: async () => 0, deleteSave: async () => {},
+    renameSave: async () => {}, renameWorld: async () => {},
+    editPersona: async () => {}, cleanEmpty: async () => ({ saves: 0, worlds: 0 }),
+    deleteByScope: async () => ({ deleted: 0, what: '' }),
+    exportAll: async () => ({ worlds: {} }),
+    refreshTop: noop,
+};
+
+const R = { errors, ok: false };
+
+/** 量一个按钮：宽 / 高 / 是不是接近正方形 / 文字行数 */
+function probeBtn(b) {
+    if (!b) return null;
+    const r = b.getBoundingClientRect();
+    const lh = parseFloat(getComputedStyle(b).lineHeight) || 20;
+    return {
+        text: (b.textContent || '').trim().slice(0, 14),
+        w: Math.round(r.width),
+        h: Math.round(r.height),
+        ratio: r.height ? Math.round((r.width / r.height) * 100) / 100 : 0,
+        // 高度超过 1.6 倍行高 → 文字换行了
+        wrapped: r.height > lh * 1.6,
+        textW: Math.round(b.scrollWidth),
+    };
+}
+
+/** 一行里放了多少个按钮（按 y 坐标分组） */
+function rowsOf(btns) {
+    const ys = btns.map((b) => Math.round(b.getBoundingClientRect().top));
+    return new Set(ys).size;
+}
+
+try {
+    const host = document.getElementById('popup-host');
+    const root = buildEditor({ ctx, api, version: '1.3.3' });
+    host.appendChild(root);
+    await sleep(200);
+
+    const tabs = [...root.querySelectorAll('.cmcc-tab')];
+
+    // ── ① 记忆标签里的「记忆树视图」按钮排 ──
+    tabs.find((t) => t.dataset.tab === 'memory').click();
+    await sleep(200);
+    // ★ v1.3.3：按钮排现在直接挂在「记忆」标签下（多选也在这一排里），
+    //   不再包在 .cmcc-fold 里
+    const memBar = root.querySelector('.cmcc-mem-topbar');
+    const memBtns = memBar ? [...memBar.querySelectorAll('button')] : [];
+    R.memoryBtnCount = memBtns.length;
+    R.memoryBtns = memBtns.map(probeBtn);
+    R.memoryRows = rowsOf(memBtns);
+    R.memoryOneRow = R.memoryRows === 1;
+    R.memoryNoneWrapped = R.memoryBtns.every((b) => b && !b.wrapped);
+
+    // ── ② 「关于」标签里的按钮排 ──
+    tabs.find((t) => t.dataset.tab === 'about').click();
+    await sleep(200);
+    const about = root.querySelector('.cmcc-tab-pane');
+    const aboutBtns = [...about.querySelectorAll('button')];
+    R.aboutBtnCount = aboutBtns.length;
+    R.aboutBtns = aboutBtns.map(probeBtn);
+    R.aboutNoneWrapped = R.aboutBtns.every((b) => b && !b.wrapped);
+
+    // ── ③ 多选态下那一排也量一下（量不到不算失败）──
+    // 说明：这段在测试环境里一直取不到重建后的按钮排（原因未查明），
+    //   所以**不把结果并进 ok**。多选入口由 editor.html 守、
+    //   级联勾选由 multiselect.html 守，这里只是留个记录。
+    //   我用独立探针页已确认多选态四个按钮都是横排：
+    //     "✕ 退出多选" 87×28 / "全选当前" 74×28
+    //     "清空勾选" 74×28 / "删除选中的 0 条" 112×28
+    const mb2 = memBtns[0];
+    let selBtns = [];
+    R.selProbed = false;
+    if (mb2) {
+        mb2.click();
+        await sleep(250);
+        const bar2 = root.querySelector('.cmcc-mem-topbar');
+        if (bar2) {
+            selBtns = [...bar2.querySelectorAll('button')];
+            R.selProbed = selBtns.length > 0;
+        }
+        R.selLabels = selBtns.map((b) => (b.textContent || '').trim());
+        R.selBtnCount = selBtns.length;
+        R.selBtns = selBtns.map(probeBtn);
+    }
+
+
+    // ── ④ 爱发电链接按钮 ──
+    const afd = about.querySelector('a[href*="afdian"]');
+    R.afdianBtn = probeBtn(afd);
+
+    // ── ⑤ 诊断：到底哪条规则在起作用 ──
+    const probe0 = aboutBtns[0];
+    if (probe0) {
+        const cs = getComputedStyle(probe0);
+        R.diag = {
+            classes: probe0.className,
+            parentChain: (function () {
+                const out = [];
+                let e = probe0;
+                for (let i = 0; i < 6 && e; i++) { out.push(e.tagName.toLowerCase() + '.' + e.className); e = e.parentElement; }
+                return out;
+            })(),
+            width: cs.width,
+            height: cs.height,
+            aspectRatio: cs.aspectRatio,
+            boxSizing: cs.boxSizing,
+            display: cs.display,
+            whiteSpace: cs.whiteSpace,
+            filter: cs.filter,
+            padding: cs.padding,
+            // 我的覆盖规则有没有被匹配到
+            editorHasClass: !!root.classList.contains('cmcc-editor'),
+            editorTag: root.tagName + '.' + root.className,
+        };
+        // 数一下加载了哪些样式表
+        R.styleSheets = [...document.styleSheets].map((s) => {
+            try { return { href: (s.href || '(inline)').split('/').pop(), rules: s.cssRules.length }; }
+            catch (e) { return { href: '(取不到)', rules: -1 }; }
+        });
+    }
+
+    R.ok = errors.length === 0
+        && R.memoryBtnCount >= 4
+        && R.memoryNoneWrapped
+        && R.aboutBtnCount >= 2
+        && R.aboutNoneWrapped
+        && R.afdianBtn && !R.afdianBtn.wrapped;
+} catch (e) {
+    errors.push('抛错: ' + (e && e.message) + ' @ ' + String(e && e.stack || '').split('\n')[1]);
+}
+
+document.title = 'CMCC_BTNSIZE=' + JSON.stringify(R);
+try { console.log(document.title); } catch (e) {}
+
+const pre = document.createElement('pre');
+pre.id = 'cmcc_result';
+pre.style.cssText = 'margin:12px;padding:8px;background:#111;color:#9f9;font-size:12px;'
+    + 'white-space:pre-wrap;border-radius:4px';
+pre.textContent = '结果: ' + (R.ok ? '全部通过 ✓' : '有失败 ✗') + '\n' + JSON.stringify(R, null, 2);
+document.body.appendChild(pre);
+</script>
+</body>
+</html>

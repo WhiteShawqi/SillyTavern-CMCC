@@ -1,11 +1,13 @@
 ﻿node_modules/
 *.log
 .DS_Store
-_notes/
 .github-username
 
-# tests/layout/ 下的这些文件是 tools 从 src/ 复制来的（node tests/layout/sync.mjs）
-# 不要入库 —— 改了 src/ 之后重新 sync 即可
+# 开发用的东西都在 dev 分支上；main 分支只放插件本体。
+# 本地这个目录是 dev 分支内容的副本，不要提交。
+_dev/
+
+# tests/layout/ 下的这些是从 src/ 复制来的（node tests/layout/sync.mjs）
 tests/layout/ui.js
 tests/layout/topbar.js
 tests/layout/inject.js
