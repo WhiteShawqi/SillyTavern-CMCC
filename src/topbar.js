@@ -13,6 +13,22 @@
  * 切换是哪个角色做陪伴者 → 在扩展设置页（和酒馆助手同位置）
  */
 
+// ★ 状态全部集中在 selection.js（v1.3.3）。
+//   这里**一次把用到的都导入**，避免"改一处漏一个、逐个报 is not defined"。
+//   SELECT_MODE 原来是模块级 let，现在用 getter/setter 读改，
+//   这样读到的永远是当前值。
+import {
+    // 折叠状态
+    COLLAPSED, isCollapsed, toggleCollapsed,
+    // 勾选集合
+    SELECTED, SELECTED_WORLDS, SELECTED_SAVES,
+    // 多选开关
+    getSelectMode, setSelectMode, clearSelection,
+    // 键与级联
+    entryKey, parseEntryKey, saveKeyId,
+    setSaveEntries, setWorldAll, saveSelState, worldSelState,
+} from './selection.js';
+
 const DRAWER_ID = 'cmcc-top-drawer';
 const PANEL_ID = 'cmcc-top-panel';
 const LOG_TAG = '[CMCC]';
@@ -31,130 +47,43 @@ const POPUP_SELECTOR = [
 let RENDER_HOOK = null;
 export function setRenderHook(fn) { RENDER_HOOK = fn; }
 
-/**
- * 记忆列表的折叠状态（模块级，重渲染后保持）
- * 键形如 'w:char:x.png' / 's:char:x.png|存档1'
- * 集合里存在 = **已收起**
- *
- * 设计：**默认全部展开**，只有用户点了才收起。
- * （试过"首次自动只展开当前项"，但那会导致重渲染时展开状态莫名其妙变化，
- *   用户会以为界面在乱跳 —— 保持简单可预测更好。想要精简视图用「只看当前」。）
- */
-const COLLAPSED = new Set();
-
-function toggleCollapsed(key) {
-    if (COLLAPSED.has(key)) COLLAPSED.delete(key);
-    else COLLAPSED.add(key);
-}
-
-/** 展开某个键 */
-export function expandKey(key) { COLLAPSED.delete(key); }
-
-// ── 多选模式（模块级，重渲染后保持）──
-/** 是否处于多选模式 */
-let SELECT_MODE = false;
-/** 已勾选的记忆，键形如 'w\u0000s\u00003'（世界+存档+下标），跨存档全局唯一 */
-const SELECTED = new Set();
-/** 已勾选的整个世界（世界 key），删的时候整个一起删 */
-const SELECTED_WORLDS = new Set();
-/** 已勾选的整个存档，键形如 'w\u0000s' */
-const SELECTED_SAVES = new Set();
-
-/** 组合一条记忆的唯一键 */
-/**
- * 仅供测试：暴露三个勾选集合与「进入/退出多选」开关。
- * 生产代码不要用。
- * @internal
- */
-export const __selTestHook = {
-    SELECTED, SELECTED_SAVES, SELECTED_WORLDS,
-    clear() { SELECTED.clear(); SELECTED_SAVES.clear(); SELECTED_WORLDS.clear(); },
-    setMode(v) { SELECT_MODE = !!v; },
-    getMode() { return SELECT_MODE; },
-};
-
-export function entryKey(wKey, sKey, idx) {
-    return wKey + '\u0000' + sKey + '\u0000' + idx;
-}
-
-/** 拆回 [wKey, sKey, idx] */
-export function parseEntryKey(k) {
-    const [w, s, i] = k.split('\u0000');
-    return [w, s, parseInt(i, 10)];
-}
-
-/** 存档的勾选键（三级里 L2 用） */
-export function saveKeyId(wKey, sKey) {
-    return 's:' + wKey + '|' + sKey;
-}
-
-// ─────────────────────────────────────────────
-// 三级级联勾选
+// ══════════════════════════════════════════════
+// 记忆树的折叠状态 / 多选状态 / 级联勾选
 //
-// 用户反馈的问题：勾了「世界」（L1）却没有把下面的存档和记忆一起勾上，
-// 勾了「存档」（L2）也没有带上 L3 —— 显示上"已选 1 个世界"但条目都没勾，
-// 看起来像"非正常全选"。
+// ★ 这些**已经搬到 src/selection.js**（v1.3.3）。
+//   原因：弹出式编辑器要和人设栏共用同一份状态，
+//   各留一份的话会出现「在 A 里勾的条目，到 B 里看不见」。
 //
-// 规则：
-//   · 勾 L1 → 它下面所有 L2、L3 全部勾上
-//   · 勾 L2 → 它下面所有 L3 全部勾上
-//   · 取消同理，逐层清掉
-//   · L2 复选框：自己的整档选了 → 勾上；部分 L3 选了 → 半选
-//   · L1 复选框：整个世界的档全选 → 勾上；部分 → 半选
-// ─────────────────────────────────────────────
+//   这里只做**转发**，把旧的导出名继续提供给已有代码和测试用
+//   （tests/_cascade_test.mjs 就是从 './topbar.js' 导入这几个的）。
+//   新代码请直接从 './selection.js' 导入。
+// ══════════════════════════════════════════════
 
-/** 把某个存档下所有记忆加进 / 移出 SELECTED */
-export function setSaveEntries(wKey, sKey, on, worlds) {
-    const w = worlds?.[wKey];
-    const n = w?.saves?.[sKey]?.entries?.length || 0;
-    for (let i = 0; i < n; i++) {
-        const k = entryKey(wKey, sKey, i);
-        if (on) SELECTED.add(k); else SELECTED.delete(k);
-    }
-}
+export {
+    COLLAPSED,
+    isCollapsed,
+    toggleCollapsed,
+    expandKey,
+    collapseAll,
+    clearCollapsed,
+    SELECTED,
+    SELECTED_WORLDS,
+    SELECTED_SAVES,
+    getSelectMode,
+    setSelectMode,
+    clearSelection,
+    entryKey,
+    parseEntryKey,
+    saveKeyId,
+    setSaveEntries,
+    setWorldAll,
+    saveSelState,
+    worldSelState,
+    selectedTotal,
+    __selTestHook,
+} from './selection.js';
 
-/** 把某个世界下所有存档、记忆加进 / 移出 */
-export function setWorldAll(wKey, on, worlds) {
-    const w = worlds?.[wKey];
-    if (!w?.saves) return;
-    for (const sKey of Object.keys(w.saves)) {
-        const id = saveKeyId(wKey, sKey);
-        if (on) SELECTED_SAVES.add(id); else SELECTED_SAVES.delete(id);
-        setSaveEntries(wKey, sKey, on, worlds);
-    }
-}
 
-/** 某个存档的勾选状态：'all' | 'some' | 'none' */
-export function saveSelState(wKey, sKey, worlds) {
-    const n = worlds?.[wKey]?.saves?.[sKey]?.entries?.length || 0;
-    if (!n) return SELECTED_SAVES.has(saveKeyId(wKey, sKey)) ? 'all' : 'none';
-    let hit = 0;
-    for (let i = 0; i < n; i++) if (SELECTED.has(entryKey(wKey, sKey, i))) hit++;
-    if (hit === 0) return SELECTED_SAVES.has(saveKeyId(wKey, sKey)) ? 'all' : 'none';
-    return hit === n ? 'all' : 'some';
-}
-
-/** 某个世界的勾选状态：'all' | 'some' | 'none' */
-export function worldSelState(wKey, worlds) {
-    const w = worlds?.[wKey];
-    if (!w?.saves) return 'none';
-    const keys = Object.keys(w.saves);
-    if (!keys.length) return SELECTED_WORLDS.has(wKey) ? 'all' : 'none';
-    let all = 0, some = 0;
-    for (const sKey of keys) {
-        const st = saveSelState(wKey, sKey, worlds);
-        if (st === 'all') all++;
-        else if (st === 'some') some++;
-    }
-    if (all === keys.length) return 'all';
-    if (all || some) return 'some';
-    return 'none';
-}
-
-/**
- * 判断记忆世界书是否已挂载（全局选中 或 当前角色的附加世界书）
- * ST 只读「外部世界书文件」，卡内嵌的不生效 —— 所以要提醒用户挂载。
- */
 export function isWorldBookActive(ctx, bookName) {
     if (!bookName) return true;
     try {
@@ -565,16 +494,16 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
     // ── 多选工具栏 ──
     const selBar = el('div', 'cmcc-selbar');
     const bSelToggle = el('button', 'menu_button cmcc-mini',
-        SELECT_MODE ? '✕ 退出多选' : '☑ 多选');
-    bSelToggle.title = SELECT_MODE ? '退出多选模式' : '勾选多条记忆一起删';
+        getSelectMode() ? '✕ 退出多选' : '☑ 多选');
+    bSelToggle.title = getSelectMode() ? '退出多选模式' : '勾选多条记忆一起删';
     bSelToggle.onclick = () => {
-        SELECT_MODE = !SELECT_MODE;
-        if (!SELECT_MODE) { SELECTED.clear(); SELECTED_SAVES.clear(); SELECTED_WORLDS.clear(); }
+        setSelectMode(!getSelectMode());
+        if (!getSelectMode()) clearSelection();
         renderTopPanel({ ctx, api, onGotoSettings });
     };
     selBar.appendChild(bSelToggle);
 
-    if (SELECT_MODE) {
+    if (getSelectMode()) {
         const wN = SELECTED_WORLDS.size;
         const sN = SELECTED_SAVES.size;
         selBar.appendChild(el('span', 'cmcc-meta',
@@ -677,7 +606,7 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
             const row = el('div', 'cmcc-entry');
             row.appendChild(el('span', 'cmcc-lv cmcc-lv3', 'L3'));
 
-            if (SELECT_MODE) {
+            if (getSelectMode()) {
                 // ── 多选模式：显示勾选框，点整行即勾选 ──
                 const val = entryKey(wKey, sKey, idx);
                 const cb = document.createElement('input');
@@ -763,7 +692,7 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
         const wchev = el('span', 'cmcc-chev', wCollapsed ? '▸' : '▾');
         wh.appendChild(wchev);
         // 多选模式下，整个世界可以被勾选
-        if (SELECT_MODE) {
+        if (getSelectMode()) {
             const wcb = document.createElement('input');
             wcb.type = 'checkbox';
             wcb.className = 'cmcc-check cmcc-world-check';
@@ -821,7 +750,7 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
             const sh = el('div', 'cmcc-save-head');
             sh.appendChild(el('span', 'cmcc-chev', sCollapsed ? '▸' : '▾'));
             // 多选模式下，整个存档可以被勾选
-            if (SELECT_MODE) {
+            if (getSelectMode()) {
                 const scb = document.createElement('input');
                 scb.type = 'checkbox';
                 scb.className = 'cmcc-check cmcc-save-check';
@@ -864,7 +793,7 @@ export function renderTopPanel({ ctx, api, onGotoSettings }) {
             sh.appendChild(del);
             sh.onclick = () => { toggleCollapsed(sKeyId); renderTopPanel({ ctx, api, onGotoSettings }); };
             sh.title = '点击展开 / 收起';
-            if (SELECT_MODE && SELECTED_SAVES.has(sKeyId)) sd.classList.add('cmcc-picked');
+            if (getSelectMode() && SELECTED_SAVES.has(sKeyId)) sd.classList.add('cmcc-picked');
             sd.appendChild(sh);
 
             if (!sCollapsed) {

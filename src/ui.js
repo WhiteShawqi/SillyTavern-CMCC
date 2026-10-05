@@ -35,10 +35,10 @@ function el(tag, cls, html) {
  * @param {() => void} o.onSave
  * @param {object} o.ctx
  * @param {object} o.api
- * @param {() => void} o.onOpenTop   打开顶部面板
+ * @param {() => void} o.onOpenEditor  打开人设/记忆编辑器（弹出式）
  */
 export function renderPanel(o) {
-    const { settings, onSave, ctx, api, onOpenTop } = o;
+    const { settings, onSave, ctx, api, onOpenEditor } = o;
     document.getElementById(ID)?.remove();
 
     // ── 外层：ST 标准 inline-drawer（可收起）──
@@ -459,10 +459,14 @@ export function renderPanel(o) {
     }
     sec1.appendChild(builtinBox);
 
-    // 打开顶部面板（改人设 / 记忆）
+    // 打开编辑器（改人设 / 记忆）
+    // ★ v1.3.3：取消酒馆顶部图标后，这里是编辑人设与记忆的主入口，
+    //   所以按钮做得显眼一些（宽按钮），而不是塞进小工具栏。
     const createRow = el('div', 'cmcc-btns');
-    const bOpen = el('button', 'menu_button cmcc-wide-btn', '打开顶部面板（改人设 / 记忆）');
-    bOpen.onclick = () => onOpenTop();
+    const bOpen = el('button', 'menu_button cmcc-wide-btn cmcc-primary-btn',
+        '✎ 打开编辑器（改人设 / 记忆）');
+    bOpen.title = '弹出一个面板，分标签页编辑人设与记忆';
+    bOpen.onclick = () => onOpenEditor();
     createRow.appendChild(bOpen);
     sec1.appendChild(createRow);
 
@@ -559,8 +563,8 @@ export function renderPanel(o) {
     ovSummary = el('span', 'cmcc-meta cmcc-ov-summary', '');
     ovHead.appendChild(ovSummary);
     const bTop = el('button', 'menu_button cmcc-mini', '去编辑');
-    bTop.title = '打开顶部面板改人设 / 记忆';
-    bTop.onclick = (ev) => { ev.stopPropagation(); onOpenTop(); };
+    bTop.title = '打开编辑器改人设 / 记忆';
+    bTop.onclick = (ev) => { ev.stopPropagation(); onOpenEditor(); };
     ovHead.appendChild(bTop);
     ovHead.onclick = () => {
         OVERVIEW_OPEN = !OVERVIEW_OPEN;
@@ -746,7 +750,7 @@ export function renderPanel(o) {
             shown, expect);
         try {
             root.remove();
-            renderPanel({ settings, onSave, ctx, api, onOpenTop });
+            renderPanel({ settings, onSave, ctx, api, onOpenEditor });
         } catch (e) {
             console.error('[CMCC] 重挂面板也失败了', e);
         }

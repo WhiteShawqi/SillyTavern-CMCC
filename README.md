@@ -1,7 +1,7 @@
 # 跨世界陪伴角色 · CMCC
 
 [![SillyTavern Extension](https://img.shields.io/badge/SillyTavern-Extension-blue)](https://github.com/SillyTavern/SillyTavern)
-[![version](https://img.shields.io/badge/version-1.1.1-green)](https://github.com/WhiteShawqi/SillyTavern-CMCC/releases)
+[![version](https://img.shields.io/badge/version-1.3.3-green)](https://github.com/WhiteShawqi/SillyTavern-CMCC/releases)
 
 ### 📦 安装链接
 
@@ -524,8 +524,10 @@ node tests/layout/run.mjs
 | `src/memo.js` | 解析 AI 输出的记忆块（纯文本 / JSON / 旧格式） |
 | `src/portable.js` | 导出/导入的纯逻辑（可单测） |
 | `src/summary.js` | 读预设自带 `<summary>` 摘要的能力（当前不接入记忆流程） |
+| `src/selection.js` | 记忆树的折叠状态、多选集合、三级级联勾选（纯状态，不碰 DOM） |
+| `src/editor.js` | 弹出式编辑器：标签页 + 内部折叠（人设 / 记忆 / 更新 / 备份 / 赞助） |
 | `src/ui.js` | 设置面板（人设预设 / 导出导入 / 参数 / 记忆总览） |
-| `src/topbar.js` | 酒馆顶部入口：人设编辑 + 记忆树 + 多选级联 |
+| `src/topbar.js` | 只剩工具函数（打开世界书面板、判断世界书有没有挂载） |
 
 ### 数据流
 
@@ -544,10 +546,12 @@ node tests/layout/run.mjs
 
 ## 路线图
 
+- [x] v1.3.3 弹出式编辑器（取消酒馆顶部图标）+ 手动更新 + 备份按钮
+
 - [x] v0.1 分层记忆 + 注入机制
 - [x] v0.2 全量跨世界记忆 + 存档区分 + token 预算
 - [x] v0.3 记忆改存世界书 + 可视化编辑
-- [x] v0.4 酒馆顶部独立入口（改人设 / 记忆）
+- [x] v0.4 酒馆顶部独立入口（改人设 / 记忆）—— **v1.3.3 已换成弹出式编辑器**
 - [x] v0.6 独立内置陪伴角色（不写角色卡库）+ 记忆直接注入
 - [x] v0.7 MVU 式记忆（AI 输出代码块 → 插件自动记）+ 记忆默认空
 - [x] v0.9 三级记忆树（世界 → 存档 → 记忆）+ 批量删除

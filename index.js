@@ -41,7 +41,11 @@ import { parseMemoryCommands, commandSpec, stripBlocks } from './src/memo.js';
 // 但按用户要求**不再接入记忆流程** ——
 // 摘要记录整节剧情（含她不在场的部分），而她只该记「和你共同经历的事」。
 import { renderPanel } from './src/ui.js';
-import { mountTopDrawer, renderTopPanel, openTopPanel, setRenderHook } from './src/topbar.js';
+// 顶部图标已取消（v1.3.3）：人设 / 记忆编辑改成弹出式面板。
+// 那两块渲染逻辑已经搬到 src/editor.js。topbar.js 现在只剩
+// openWorldBook / isWorldBookActive 两个工具函数，由 editor.js 直接使用，
+// index.js 不需要再导入它们。
+import { openEditor, refreshEditor } from './src/editor.js';
 
 const MANIFEST_VERSION = '1.0.0';
 
@@ -1047,21 +1051,31 @@ const api = {
         return { ...r, clean: stripBlocks(String(text || '')).slice(0, 200) };
     },
     /**
-     * 顶部面板重绘
-     * ⚠ 不要在这里吞异常 —— 之前写成 catch(e){} 导致"面板只有标题没内容"
-     *   却看不到任何报错。现在出错会写进 console 并显示在面板里。
+     * 编辑面板重绘
+     *
+     * 原来这里是重绘「酒馆顶部那个抽屉」。v1.3.3 把顶部入口取消了，
+     * 人设 / 记忆编辑改成弹出式编辑器，这里就只负责刷新**已经打开的**编辑器。
+     * 没打开时是空操作，所以所有旧调用点（记忆增删后）都能照常调，不用改。
      */
     refreshTop() {
         try {
-            renderTopPanel({ ctx: ctx(), api, onGotoSettings: gotoPluginSettings });
+            refreshEditor();
         } catch (e) {
-            console.error(LOG, '顶部面板渲染失败', e);
-            const body = document.getElementById('cmcc-top-panel_body');
-            if (body) {
-                body.innerHTML = '<div class="cmcc-empty" style="color:#ff9b9b">'
-                    + '面板渲染失败：' + String(e && e.message || e)
-                    + '<br><small>详见 F12 控制台</small></div>';
-            }
+            console.error(LOG, '刷新编辑面板失败', e);
+        }
+    },
+
+    /** 打开人设 / 记忆编辑器（弹出式） */
+    openEditor() {
+        try {
+            openEditor({
+                ctx: ctx(),
+                api,
+                version: MANIFEST_VERSION,
+            });
+        } catch (e) {
+            console.error(LOG, '打开编辑器失败', e);
+            ctx().toastr?.error?.('打开编辑器失败：' + (e && e.message), 'CMCC');
         }
     },
 };
@@ -1125,40 +1139,15 @@ jQuery(async () => {
         try { await loadFromBook(); } catch (e) { warn('载入世界书失败', e); }
     }
 
-    // 顶部入口（酒馆顶部图标栏）
-    try {
-        // 注册重渲染钩子，供"打开面板时自愈"使用
-        setRenderHook(() => api.refreshTop());
-        mountTopDrawer();
-        api.refreshTop();
-    } catch (e) { warn('顶部入口挂载失败', e); }
-
-    // ST 有时会在扩展加载后重建 / 异步补完 DOM（例如角色列表就绪时），
-    // 若那时我们的图标被移除，这里补挂一次。
-    setTimeout(() => {
-        try {
-            if (!document.getElementById('cmcc-top-drawer')) {
-                warn('图标不见了，重新挂载');
-                mountTopDrawer();
-            }
-            // 面板存在但内容是空的 → 再渲染一次
-            const b = document.getElementById('cmcc-top-panel_body');
-            if (b && b.children.length === 0) {
-                warn('面板为空，补渲染');
-                api.refreshTop();
-            }
-        } catch (e) { warn('补挂失败', e); }
-    }, 1500);
-
     // 扩展到设置页（和酒馆助手同位置）
+    // ★ v1.3.3：不再挂酒馆顶部的图标。人设 / 记忆编辑改成弹出式编辑器，
+    //   从设置页里点「打开编辑器」进入 —— 顶部那一排是酒馆自己的地盘，
+    //   而且把人设栏塞进一个小抽屉里实在挤。
     try {
         log('开始挂载设置页面板…');
         panel = renderPanel({
             settings, onSave, ctx: ctx(), api,
-            onOpenTop: () => {
-                openTopPanel();
-                api.refreshTop();
-            },
+            onOpenEditor: () => api.openEditor(),
         });
         log('设置页面板挂载完成: %s',
             panel ? Object.keys(panel).join(',') : '(返回空)');
