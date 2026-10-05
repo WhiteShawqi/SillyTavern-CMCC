@@ -1,7 +1,7 @@
 # 跨世界陪伴角色 · CMCC
 
 [![SillyTavern Extension](https://img.shields.io/badge/SillyTavern-Extension-blue)](https://github.com/SillyTavern/SillyTavern)
-[![version](https://img.shields.io/badge/version-1.3.3-green)](https://github.com/WhiteShawqi/SillyTavern-CMCC/releases)
+[![version](https://img.shields.io/badge/version-1.3.4-green)](https://github.com/WhiteShawqi/SillyTavern-CMCC/releases)
 
 ### 📦 安装链接
 

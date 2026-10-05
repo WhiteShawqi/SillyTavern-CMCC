@@ -1250,6 +1250,71 @@ details.cmcc[open] > *:not(summary):last-child {
     background: color-mix(in srgb, var(--SmartThemeQuoteColor, #7aa2f7) 16%, transparent);
 }
 
+/* ══════════════════════════════════════════════
+   修「按钮竖着排」
+
+   ST 的 .menu_button 是给**方形图标按钮**写的：
+       .menu_button { width: calc(var(--mainFontSize) * 1.7);
+                      aspect-ratio: 1/1; width: unset;
+                      box-sizing: content-box; }
+   我们的按钮带中文文字，套上就被锁在约 31px 宽 → 逐字换行成竖条。
+
+   实测（用真实 ST style.css）：
+     "全部展开"   31×82    比例 0.38   ← 竖的
+     "打开世界书"  31×101   比例 0.31   ← 竖的
+     "♥ 爱发电赞助" 108×29  比例 3.72   ← 正常（唯一不用 .menu_button 的）
+
+   所以把方框规则全部还原成「按内容自适应」。
+   ⚠ 别删这段 —— 删了按钮会立刻变回竖条。
+   ══════════════════════════════════════════════ */
+.cmcc-panel .menu_button,
+.cmcc-editor .menu_button,
+.cmcc-support-btn {
+    /* ★ 必须 !important。
+       真凶是 ST 的 .menu_button { width: min-content } ——
+       对中文等于「一个字宽」，按钮被压成 31×82 的竖条。
+       试过不加 !important：aspect-ratio / box-sizing 都生效了，
+       但 width 输给了 min-content，量出来还是 31px。
+       这段只在 .cmcc-panel / .cmcc-editor 内生效，不动酒馆自己的按钮。 */
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    height: auto !important;
+    min-height: 0 !important;
+    aspect-ratio: auto !important;
+    box-sizing: border-box;
+    /* 酒馆给图标按钮加了灰度滤镜，文字按钮不需要 */
+    filter: none;
+}
+
+/* 按钮里的中文不许断行（断行就是竖排的前兆） */
+.cmcc-panel .menu_button,
+.cmcc-editor .menu_button {
+    white-space: nowrap;
+    line-height: 1.4;
+    padding: 4px 10px;
+}
+
+/* 「打开编辑器」那种占满一行的按钮 */
+.cmcc-wide-btn { flex: 1 1 100%; text-align: center; font-weight: bold; }
+
 .cmcc-primary-btn:hover {
     background: color-mix(in srgb, var(--SmartThemeQuoteColor, #7aa2f7) 28%, transparent);
+}
+/* 「记忆」标签顶部那一排（多选就在这一排里，见 editor.js 的 makeMemoryTopBar） */
+.cmcc-mem-topbar {
+    margin-top: 2px;
+    margin-bottom: 6px;
+    padding-bottom: 6px;
+    border-bottom: 1px dashed rgba(127 127 127 / 0.3);
+}
+
+/* 删除按钮：数字变了要显眼，禁用时别太扎眼 */
+.cmcc-del-btn:not([disabled]) {
+    border-color: rgba(220, 90, 90, 0.55);
+    background: rgba(220, 90, 90, 0.16);
+}
+
+.cmcc-del-btn:not([disabled]):hover {
+    background: rgba(220, 90, 90, 0.28);
 }
